@@ -1,0 +1,84 @@
+name: 编译内核 a14-6.1 (SukiSU)
+
+permissions:
+  contents: write
+  actions: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      # kernelsu_variant 输入已被移除，因为固定为 SukiSU
+      kernelsu_branch:
+        description: "选择 SukiSU 分支"
+        required: true
+        type: choice
+        options:
+          - Stable(标准) # SukiSU 稳定版
+          - Dev(开发)   # SukiSU 开发版 (susfs-dev)
+        default: Dev(开发)
+      version_type:
+        description: "版本后缀生成方式"
+        required: true
+        type: choice
+        options:
+          - 自定义
+          - 随机生成
+        default: 随机生成
+      custom_version_suffix:
+        description: '若选"自定义",在此输入后缀 (例如: -MyBuild1)。将附加在标准版本名后。'
+        required: false
+        type: string
+        default: "" # 默认为空字符串
+
+jobs:
+  prepare-version: # 第一个任务：准备版本后缀
+    runs-on: ubuntu-latest
+    outputs:
+      version_suffix_value: ${{ steps.version_generator.outputs.version_value }}
+    steps:
+      - name: Generate Version Suffix
+        id: version_generator
+        shell: bash
+        env:
+          INPUT_VERSION_TYPE: ${{ inputs.version_type }}
+          INPUT_CUSTOM_SUFFIX: ${{ inputs.custom_version_suffix }}
+        run: |
+          set -x # 启用调试输出
+          VERSION_OUTPUT=""
+
+          echo "Debug: INPUT_VERSION_TYPE is [$INPUT_VERSION_TYPE]"
+          echo "Debug: INPUT_CUSTOM_SUFFIX is [$INPUT_CUSTOM_SUFFIX]"
+
+          if [[ "$INPUT_VERSION_TYPE" == "自定义" ]]; then
+            # 如果用户提供了自定义后缀，确保它以 '-' 开头（如果它不为空且不以'-'开头）
+            if [[ -n "$INPUT_CUSTOM_SUFFIX" && ! "$INPUT_CUSTOM_SUFFIX" == -* ]]; then
+                VERSION_OUTPUT="-$INPUT_CUSTOM_SUFFIX"
+            else
+                VERSION_OUTPUT="$INPUT_CUSTOM_SUFFIX" # 用户可能已经加了 '-' 或者就是空
+            fi
+            echo "Debug: 使用自定义后缀: '$VERSION_OUTPUT'"
+          elif [[ "$INPUT_VERSION_TYPE" == "随机生成" ]]; then
+            # 随机后缀不再包含固定部分，只生成随机字符，并以 '-' 开头
+            PREFIX1="gd" # 可以修改或移除
+            PREFIX2="ab" # 可以修改或移除
+            RANDOM_HEX=$( (LC_ALL=C tr -dc 'a-f0-9' < /dev/urandom | head -c 7 | cat) || true ) # 缩短长度
+            RANDOM_DIGITS=$( (LC_ALL=C tr -dc '0-9' < /dev/urandom | head -c 7 | cat) || true )
+            VERSION_OUTPUT="-${PREFIX1}${RANDOM_HEX}-${PREFIX2}${RANDOM_DIGITS}"
+            echo "Debug: 生成的随机后缀: '$VERSION_OUTPUT'"
+          else
+            echo "::warning::未知的 version_type: [$INPUT_VERSION_TYPE]. 使用空后缀."
+            VERSION_OUTPUT=""
+          fi
+          
+          echo "Debug: 最终 version_value (后缀): '$VERSION_OUTPUT'"
+          echo "version_value=$VERSION_OUTPUT" >> "$GITHUB_OUTPUT"
+
+  build-kernel-a14-6-1: # 第二个任务：构建内核，依赖于第一个任务
+    needs: prepare-version
+    uses: ./.github/workflows/kernel-a14-6.1.yml # 调用中间层 workflow
+    secrets: inherit
+    with:
+      make_release: false # 或者 true，根据你的需求
+      # kernelsu_variant 不再传递，已在下游固定
+      kernelsu_branch: ${{ inputs.kernelsu_branch }} # 传递 SukiSU 分支选择
+      version: ${{ needs.prepare-version.outputs.version_suffix_value }} # 传递生成的版本后缀
