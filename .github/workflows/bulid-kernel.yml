@@ -1,4 +1,4 @@
-name: 编译内核 (SukiSU)
+name: A编译内核 (SukiSU)
 
 permissions:
   contents: write
