@@ -1,0 +1,42 @@
+name: Android 14 6.1 Kernel Build with SukiSU
+permissions:
+  contents: write
+  actions: write
+
+on:
+  workflow_call:
+    inputs:
+      make_release:
+        required: true
+        type: boolean
+      kernelsu_branch: # SukiSU 的分支 (Stable/Dev)
+        required: true
+        type: string
+      version: # 版本后缀
+        required: false
+        type: string
+
+jobs:
+  build-kernel-a14-6-1-sukisu: # Job 名称更明确
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 你可以根据需要保留或修改这里的 sub_level 和 os_patch_level
+          # 例如，只编译最新的一个：
+          - sub_level: "75" # 示例，请替换为你实际需要的sub_level
+            os_patch_level: "2024-05" # 示例，请替换
+          # 如果需要编译多个 6.1 的小版本，可以像原来一样列出
+          # - sub_level: "xx"
+          #   os_patch_level: "YYYY-MM"
+    uses: ./.github/workflows/gki-kernel.yml # 调用已修改的 gki-kernel.yml
+    secrets: inherit
+    with:
+      make_release: ${{ inputs.make_release }}
+      android_version: "android14" # 固定为 android14
+      kernel_version: "6.1"     # 固定为 6.1
+      sub_level: ${{ matrix.sub_level }}
+      os_patch_level: ${{ matrix.os_patch_level }}
+      # kernelsu_variant: "SukiSU" # 不再需要传递，gki-kernel.yml 内部已固定
+      kernelsu_branch: ${{ inputs.kernelsu_branch }} # 传递 SukiSU 的分支选择
+      version: ${{ inputs.version }} # 传递版本后缀
