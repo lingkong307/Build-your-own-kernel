@@ -1,42 +1,80 @@
-name: Kernel Build with SukiSU
+name: Android 14 6.1
 permissions:
-  contents: write
-  actions: write
+  contents: write  # Allow writing to repository contents (for pushing tags)
+  actions: write   # Allows triggering actions
 
 on:
-  workflow_call:
+  workflow_call:  # This allows this workflow to be called from another workflow
     inputs:
       make_release:
         required: true
         type: boolean
-      kernelsu_branch: # SukiSU 的分支 (Stable/Dev)
+        default: true
+      kernelsu_variant:
         required: true
         type: string
-      version: # 版本后缀
+        default: Next
+      kernelsu_branch:
+        required: true
+        type: string
+        default: Stable
+      version:
         required: false
         type: string
+        default: ""
+      use_zram:
+        description: '是否开启增加更多ZRAM算法?'
+        required: true
+        type: boolean
+        default: true
+      use_kpm:
+        description: '是否开启KPM功能?'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
-  build-kernel-a14-6-1-sukisu: # Job 名称更明确
+  build-kernel-a14-6-1-kernelsu-susfs:
     strategy:
       fail-fast: false
       matrix:
         include:
-          # 你可以根据需要保留或修改这里的 sub_level 和 os_patch_level
-          # 例如，只编译最新的一个：
-          - sub_level: "75" # 示例，请替换为你实际需要的sub_level
-            os_patch_level: "2024-05" # 示例，请替换
-          # 如果需要编译多个 6.1 的小版本，可以像原来一样列出
-          # - sub_level: "xx"
-          #   os_patch_level: "YYYY-MM"
-    uses: ./.github/workflows/gki-kernel.yml # 调用已修改的 gki-kernel.yml
+          # - sub_level: "57"
+          #  os_patch_level: "2024-01"
+          # - sub_level: "68"
+          #  os_patch_level: "2024-03"
+          - sub_level: "75"
+            os_patch_level: "2024-05"
+          # - sub_level: "78"
+          #   os_patch_level: "2024-06"
+          # - sub_level: "84"
+          #  os_patch_level: "2024-07"
+          # - sub_level: "90"
+          #  os_patch_level: "2024-08"
+          # - sub_level: "93"
+          #  os_patch_level: "2024-09"
+          # - sub_level: "112"
+          #   os_patch_level: "2024-11"
+          # - sub_level: "115"
+          #  os_patch_level: "2024-12"
+          # - sub_level: "118"
+          #  os_patch_level: "2025-01"
+          # - sub_level: "124"
+          #  os_patch_level: "2025-02"
+          #- sub_level: "128"
+          #  os_patch_level: "2025-03"
+          # - sub_level: "X"
+          #   os_patch_level: "lts"
+    uses: ./.github/workflows/gki-kernel.yml
     secrets: inherit
     with:
-      make_release: ${{ inputs.make_release }}
-      android_version: "android14" # 固定为 android14
-      kernel_version: "6.1"     # 固定为 6.1
+      make_release: ${{ inputs.make_release || false }}
+      android_version: "android14"
+      kernel_version: "6.1"
       sub_level: ${{ matrix.sub_level }}
       os_patch_level: ${{ matrix.os_patch_level }}
-      # kernelsu_variant: "SukiSU" # 不再需要传递，gki-kernel.yml 内部已固定
-      kernelsu_branch: ${{ inputs.kernelsu_branch }} # 传递 SukiSU 的分支选择
-      version: ${{ inputs.version }} # 传递版本后缀
+      kernelsu_variant: ${{ inputs.kernelsu_variant || 'Next' }}
+      kernelsu_branch: ${{ inputs.kernelsu_branch || 'Dev' }}
+      version: ${{ inputs.version || '' }}
+      use_zram: ${{ inputs.use_zram }}
+      use_kpm: ${{ inputs.use_kpm }}
