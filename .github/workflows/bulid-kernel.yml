@@ -1,4 +1,4 @@
-name: A编译内核 (SukiSU)
+name: 编译内核a14-6-1
 
 permissions:
   contents: write
@@ -7,31 +7,51 @@ permissions:
 on:
   workflow_dispatch:
     inputs:
-      # kernelsu_variant 输入已被移除，因为固定为 SukiSU
-      kernelsu_branch:
-        description: "选择 SukiSU 分支"
+      kernelsu_variant:
+        description: "选择 KernelSU"
         required: true
         type: choice
         options:
-          - Stable(标准) # SukiSU 稳定版
-          - Dev(开发)   # SukiSU 开发版 (susfs-dev)
+          - Official
+          - Next
+          - MKSU
+          - SukiSU
+        default: SukiSU
+      kernelsu_branch:
+        description: "选择 ksu 分支"
+        required: true
+        type: choice
+        options:
+          - Stable(标准)
+          - Dev(开发)
+          - Other(其他/指定) 
         default: Dev(开发)
       version_type:
         description: "版本后缀生成方式"
         required: true
         type: choice
         options:
-          - 自定义
-          - 随机生成
+          - 自定义 
+          - 随机生成 
         default: 随机生成
       custom_version_suffix:
-        description: '若选"自定义",在此输入后缀 (例如: -MyBuild1)。将附加在标准版本名后。'
+        description: '若选"自定义",在此输入后缀'
         required: false
         type: string
-        default: "" # 默认为空字符串
+        default: "" 
+      use_zram: 
+        description: '是否开启增加更多ZRAM算法?'
+        required: true
+        type: boolean
+        default: true
+      use_kpm: 
+        description: '是否开启KPM功能?'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
-  prepare-version: # 第一个任务：准备版本后缀
+  prepare-version: 
     runs-on: ubuntu-latest
     outputs:
       version_suffix_value: ${{ steps.version_generator.outputs.version_value }}
@@ -43,42 +63,34 @@ jobs:
           INPUT_VERSION_TYPE: ${{ inputs.version_type }}
           INPUT_CUSTOM_SUFFIX: ${{ inputs.custom_version_suffix }}
         run: |
-          set -x # 启用调试输出
+          set -x 
           VERSION_OUTPUT=""
 
-          echo "Debug: INPUT_VERSION_TYPE is [$INPUT_VERSION_TYPE]"
-          echo "Debug: INPUT_CUSTOM_SUFFIX is [$INPUT_CUSTOM_SUFFIX]"
-
           if [[ "$INPUT_VERSION_TYPE" == "自定义" ]]; then
-            # 如果用户提供了自定义后缀，确保它以 '-' 开头（如果它不为空且不以'-'开头）
-            if [[ -n "$INPUT_CUSTOM_SUFFIX" && ! "$INPUT_CUSTOM_SUFFIX" == -* ]]; then
-                VERSION_OUTPUT="-$INPUT_CUSTOM_SUFFIX"
-            else
-                VERSION_OUTPUT="$INPUT_CUSTOM_SUFFIX" # 用户可能已经加了 '-' 或者就是空
-            fi
-            echo "Debug: 使用自定义后缀: '$VERSION_OUTPUT'"
+            VERSION_OUTPUT="$INPUT_CUSTOM_SUFFIX" 
           elif [[ "$INPUT_VERSION_TYPE" == "随机生成" ]]; then
-            # 随机后缀不再包含固定部分，只生成随机字符，并以 '-' 开头
-            PREFIX1="gd" # 可以修改或移除
-            PREFIX2="ab" # 可以修改或移除
-            RANDOM_HEX=$( (LC_ALL=C tr -dc 'a-f0-9' < /dev/urandom | head -c 7 | cat) || true ) # 缩短长度
-            RANDOM_DIGITS=$( (LC_ALL=C tr -dc '0-9' < /dev/urandom | head -c 7 | cat) || true )
-            VERSION_OUTPUT="-${PREFIX1}${RANDOM_HEX}-${PREFIX2}${RANDOM_DIGITS}"
-            echo "Debug: 生成的随机后缀: '$VERSION_OUTPUT'"
+            # --- 恢复原始随机生成逻辑 ---
+            FIXED_PART="-android14-11" 
+            PREFIX1="gd"
+            PREFIX2="ab"
+            RANDOM_HEX=$( (LC_ALL=C tr -dc 'a-f0-9' < /dev/urandom | head -c 11 | cat) || true )
+            RANDOM_DIGITS=$( (LC_ALL=C tr -dc '0-9' < /dev/urandom | head -c 8 | cat) || true )
+            VERSION_OUTPUT="${FIXED_PART}-${PREFIX1}${RANDOM_HEX}-${PREFIX2}${RANDOM_DIGITS}"
+            # --- 原始逻辑结束 ---
           else
-            echo "::warning::未知的 version_type: [$INPUT_VERSION_TYPE]. 使用空后缀."
             VERSION_OUTPUT=""
           fi
           
-          echo "Debug: 最终 version_value (后缀): '$VERSION_OUTPUT'"
-          echo "version_value=$VERSION_OUTPUT" >> "$GITHUB_OUTPUT"
+          echo "version_value=${VERSION_OUTPUT}" >> "$GITHUB_OUTPUT"
 
-  build-kernel-a14-6-1: # 第二个任务：构建内核，依赖于第一个任务
-    needs: prepare-version
-    uses: ./.github/workflows/kernel-a14-6.1.yml # 调用中间层 workflow
+  build-kernel-a14-6-1:
+    needs: prepare-version 
+    uses: ./.github/workflows/kernel-a14-6.1.yml
     secrets: inherit
     with:
-      make_release: false # 或者 true，根据你的需求
-      # kernelsu_variant 不再传递，已在下游固定
-      kernelsu_branch: ${{ inputs.kernelsu_branch }} # 传递 SukiSU 分支选择
-      version: ${{ needs.prepare-version.outputs.version_suffix_value }} # 传递生成的版本后缀
+      make_release: false 
+      kernelsu_variant: ${{ inputs.kernelsu_variant }}
+      kernelsu_branch: ${{ inputs.kernelsu_branch }}
+      version: ${{ needs.prepare-version.outputs.version_suffix_value }} 
+      use_zram: ${{ inputs.use_zram }} 
+      use_kpm: ${{ inputs.use_kpm }}
