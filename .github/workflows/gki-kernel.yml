@@ -1,4 +1,4 @@
-name: GKI Kernel Build (Optimized for Android14-6.1 with SukiSU)
+name: GKI Kernel Build
 permissions:
   contents: write
   actions: write
@@ -257,26 +257,13 @@ jobs:
           cp ../../SukiSU_patch/69_hide_stuff.patch ./
           patch -p1 -F 3 < 69_hide_stuff.patch
 
-      - name: LZ4KD & ZSTDN 内核配置 (android14-6.1)
-        run: |
-          echo "为 android14-6.1 写入 LZ4KD & ZSTDN config 依赖..."
-          CONFIG_FILE="$CONFIG/common/arch/arm64/configs/gki_defconfig"
-          MODULES_BZL_FILE="$CONFIG/common/modules.bzl"
+      # ... (保留之前的步骤直到 "应用 SukiSU 的隐藏特征补丁" 之后) ...
 
-          # 确保 ZSMALLOC 和 ZRAM 为 y (编译进内核)
-          if grep -q "CONFIG_ZSMALLOC" -- "$CONFIG_FILE"; then
-            sed -i 's/CONFIG_ZSMALLOC=m/CONFIG_ZSMALLOC=y/g' "$CONFIG_FILE"
-          else
-            echo "CONFIG_ZSMALLOC=y" >> "$CONFIG_FILE"
-          fi
-          if grep -q "CONFIG_ZRAM" -- "$CONFIG_FILE"; then
-            sed -i 's/CONFIG_ZRAM=m/CONFIG_ZRAM=y/g' "$CONFIG_FILE"
-          else
-            echo "CONFIG_ZRAM=y" >> "$CONFIG_FILE"
-          fi
-              
-          # 对于 android14 (Bazel 构建系统), 修改 modules.bzl
-          # 移除内置的 zram.ko 和 zsmalloc.ko (因为已设为y)，添加 crypto_zstdn.ko
+      - name: LZ4KD & ZSTDN modules.bzl 修复 (android14-6.1)
+        # 只保留修改 modules.bzl 的部分
+        run: |
+          echo "为 android14-6.1 (Bazel) 修改 modules.bzl..."
+          MODULES_BZL_FILE="$CONFIG/common/modules.bzl"
           if [ -f "$MODULES_BZL_FILE" ]; then
             sed -i 's/"drivers\/block\/zram\/zram\.ko",//g; s/"mm\/zsmalloc\.ko",//g' "$MODULES_BZL_FILE"
             # 确保 crypto_zstdn.ko 只添加一次
@@ -287,91 +274,102 @@ jobs:
           else
             echo "::warning:: 未找到 modules.bzl 文件: $MODULES_BZL_FILE"
           fi
-          
-          # 根据需要决定是否强制关闭模块签名
-          echo "CONFIG_MODULE_SIG_FORCE=n" >> "$CONFIG_FILE" 
-          
-          # 添加必要的 CRYPTO 配置
-          echo "CONFIG_CRYPTO_LZ4HC=y" >> "$CONFIG_FILE"
-          echo "CONFIG_CRYPTO_LZ4K=y" >> "$CONFIG_FILE"
-          echo "CONFIG_CRYPTO_LZ4KD=y" >> "$CONFIG_FILE" # LZ4KD 编译进内核
-          echo "CONFIG_CRYPTO_842=y" >> "$CONFIG_FILE"
-          echo "CONFIG_CRYPTO_ZSTDN=m" >> "$CONFIG_FILE" # ZSTDN作为模块
-          echo "CONFIG_CRYPTO_LZ4K_OPLUS=y" >> "$CONFIG_FILE" # LZ4K_OPLUS 编译进内核
-          
-      - name: 添加 SukiSU 及 SUSFS 内核配置
+
+      - name: 创建自定义 Kconfig 配置片段
+        # 这个步骤将所有自定义配置写入一个临时文件
         run: |
-          echo "切换到目录: $CONFIG..."
+          echo "创建自定义 Kconfig 片段文件..."
           cd "$CONFIG"
-          echo "为 SukiSU 添加内核配置到 gki_defconfig..."
-          GKI_DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
-
-          echo "# SukiSU and General KSU Configs" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KPM=y" >> "$GKI_DEFCONFIG_PATH" # Kernel Patch Module for SukiSU
-          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$GKI_DEFCONFIG_PATH" # 假设SukiSU不需要
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$GKI_DEFCONFIG_PATH" # SukiSU 使用手动 Hook
+          CUSTOM_CONFIG_FRAGMENT="$GITHUB_WORKSPACE/custom_config.fragment" # 定义片段文件路径
           
-          echo "# TMPFS Configs" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_TMPFS_XATTR=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$GKI_DEFCONFIG_PATH"
+          # 清空或创建文件
+          > "$CUSTOM_CONFIG_FRAGMENT" 
 
-          echo "# Network Related Configs (TTL/HL & BBR)" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_TCP_CONG_BBR=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_NET_SCH_FQ=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_TCP_CONG_BIC=n" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_TCP_CONG_HTCP=n" >> "$GKI_DEFCONFIG_PATH"
+          # --- 添加所有自定义配置 ---
+          echo "# Custom Kernel Configuration Fragment" >> "$CUSTOM_CONFIG_FRAGMENT"
+          
+          # 版本后缀
+          if [ ! -z "${{ inputs.version }}" ]; then
+            echo "CONFIG_LOCALVERSION=\"${{ inputs.version }}\"" >> "$CUSTOM_CONFIG_FRAGMENT"
+            echo "已将版本后缀 '${{ inputs.version }}' 添加到配置片段。"
+          else
+             echo "未使用自定义版本后缀。"
+             # 即使没有自定义后缀，也建议设置一个空的，避免默认的“-dirty”等
+             echo "CONFIG_LOCALVERSION=\"\"" >> "$CUSTOM_CONFIG_FRAGMENT"
+          fi
+          
+          # LZ4KD & ZSTDN 相关 (如果需要直接写入)
+          echo "CONFIG_ZSMALLOC=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_ZRAM=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_MODULE_SIG_FORCE=n" >> "$CUSTOM_CONFIG_FRAGMENT" # 是否需要强制关闭模块签名？
+          echo "CONFIG_CRYPTO_LZ4HC=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_CRYPTO_LZ4K=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_CRYPTO_LZ4KD=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_CRYPTO_842=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_CRYPTO_ZSTDN=m" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_CRYPTO_LZ4K_OPLUS=y" >> "$CUSTOM_CONFIG_FRAGMENT"
 
-          echo "# SUSFS Specific Configs" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$GKI_DEFCONFIG_PATH" # 通常设为n，除非明确需要
-          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$GKI_DEFCONFIG_PATH" # 开发时开启，发布时可关闭
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$GKI_DEFCONFIG_PATH"
+          # SukiSU and General KSU Configs
+          echo "# SukiSU and General KSU Configs" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KPM=y" >> "$CUSTOM_CONFIG_FRAGMENT" # Kernel Patch Module for SukiSU
+          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$CUSTOM_CONFIG_FRAGMENT" 
+          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$CUSTOM_CONFIG_FRAGMENT" 
 
-          # 移除 check_defconfig (对于 Bazel 构建可能不直接适用或有其他机制)
-          # sed -i 's/check_defconfig//' ./common/build.config.gki # 注释掉，Bazel构建方式不同
+          # TMPFS Configs
+          echo "# TMPFS Configs" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_TMPFS_XATTR=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+
+          # Network Related Configs (TTL/HL & BBR)
+          echo "# Network Related Configs (TTL/HL & BBR)" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_TCP_CONG_BBR=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_NET_SCH_FQ=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_TCP_CONG_BIC=n" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_TCP_CONG_HTCP=n" >> "$CUSTOM_CONFIG_FRAGMENT"
+
+          # SUSFS Specific Configs
+          echo "# SUSFS Specific Configs" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$CUSTOM_CONFIG_FRAGMENT"
+          
+          echo "自定义 Kconfig 片段已生成到: $CUSTOM_CONFIG_FRAGMENT"
+          echo "CUSTOM_CONFIG_FRAGMENT=${CUSTOM_CONFIG_FRAGMENT}" >> $GITHUB_ENV # 将路径存入环境变量
 
       - name: 配置内核版本名和编译时间戳 (android14-6.1 Bazel)
+        # 只保留修改时间戳和Bazel准备的部分
         run: |
           echo "切换到目录: $CONFIG..."
           cd "$CONFIG"
-
-          # 将自定义版本后缀写入 gki_defconfig 的 CONFIG_LOCALVERSION
-          if [ ! -z "${{ inputs.version }}" ]; then
-            echo "CONFIG_LOCALVERSION=\"${{ inputs.version }}\"" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "已将自定义版本后缀 '${{ inputs.version }}' 添加到 gki_defconfig."
-          else
-            echo "未使用自定义版本后缀。"
-          fi
 
           # 修改 mkcompile_h 中的 UTS_VERSION 时间戳
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sat Apr 20 04:20:00 UTC 2024"}' ./common/scripts/mkcompile_h
           
           # 针对 Bazel 构建 (android14+)
           echo "为 Bazel 构建准备..."
-          # 移除 abi_gki_protected_exports 相关，避免潜在的 ABI 检查问题 (如果不需要严格 ABI 检查)
+          # 移除 abi_gki_protected_exports 相关
           sed -i '/^[[:space:]]*"protected_exports_list"[[:space:]]*:[[:space:]]*"android\/abi_gki_protected_exports_aarch64",$/d' ./common/BUILD.bazel
           rm -rf ./common/android/abi_gki_protected_exports_*
-          # 移除 -maybe-dirty 后缀，确保版本号干净
+          # 移除 -maybe-dirty 后缀
           sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl
-          # 如果 gki_defconfig 中已有 CONFIG_LOCALVERSION，此行确保引号正确闭合，但要小心不要破坏已有设置
-          # sed -E -i '/^CONFIG_LOCALVERSION=/ s/(.*)"$/\1"/' ./common/arch/arm64/configs/gki_defconfig # 谨慎使用
 
       - name: 使用 Bazel 构建内核 (android14-6.1) 并重试
         uses: nick-fields/retry@v3
@@ -379,14 +377,19 @@ jobs:
           timeout_minutes: 45 # 增加超时时间
           max_attempts: 3
           retry_on: timeout
+          # 在 command 中添加 KCONFIG_FRAGMENT 环境变量
           command: |
             set -e
             set -x
             cd "$CONFIG"
-            echo "开始使用 Bazel 构建内核 (android14-6.1)..."
+            echo "开始使用 Bazel 构建内核 (android14-6.1) 并合并自定义配置..."
+            # 使用 KCONFIG_FRAGMENT 环境变量指向我们创建的片段文件
+            export KCONFIG_FRAGMENT="${{ env.CUSTOM_CONFIG_FRAGMENT }}" 
             tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
             echo "内核构建完成。"
             ccache --show-stats
+
+# ... (保留后续的 "修补 Image 文件", "创建 bootimgs 文件夹", "创建 ZIP 刷机包", "创建 boot.img 文件", "上传编译产物" 步骤) ...
 
       - name: 修补 Image 文件 (SukiSU特定, for android14-6.1 Bazel output)
         # 此步骤仅当 SukiSU KPM 需要且内核版本不是6.6时执行
