@@ -1,0 +1,488 @@
+name: GKI Kernel Build (Optimized for Android14-6.1 with SukiSU)
+permissions:
+  contents: write
+  actions: write
+
+on:
+  workflow_call:
+    inputs:
+      make_release:
+        required: true
+        type: boolean
+        default: true
+      # android_version 和 kernel_version 固定为 android14 和 6.1
+      # 保留输入结构以兼容调用，但内部会做校验或忽略
+      android_version:
+        required: true
+        type: string
+        default: "android14"
+      kernel_version:
+        required: true
+        type: string
+        default: "6.1"
+      sub_level:
+        required: true
+        type: string
+      os_patch_level:
+        required: true
+        type: string
+      # kernelsu_variant 固定为 SukiSU，不再作为可变输入
+      kernelsu_branch: # SukiSU 的分支 (Stable/Dev)
+        required: true
+        type: string
+      version: # 版本后缀
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  build-kernel-kernelsu-susfs:
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+      # 固定 KernelSU 变体为 SukiSU
+      KERNELSU_VARIANT_FIXED: "SukiSU"
+      # 固定 Android 版本和内核版本
+      ANDROID_VERSION_FIXED: "android14"
+      KERNEL_VERSION_FIXED: "6.1"
+
+    steps:
+      - name: 校验输入参数
+        run: |
+          if [[ "${{ inputs.android_version }}" != "$ANDROID_VERSION_FIXED" ]]; then
+            echo "::error::此工作流配置为仅编译 Android 版本 '$ANDROID_VERSION_FIXED'，但收到 '${{ inputs.android_version }}'"
+            exit 1
+          fi
+          if [[ "${{ inputs.kernel_version }}" != "$KERNEL_VERSION_FIXED" ]]; then
+            echo "::error::此工作流配置为仅编译内核版本 '$KERNEL_VERSION_FIXED'，但收到 '${{ inputs.kernel_version }}'"
+            exit 1
+          fi
+
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 2048
+          swap-size-mb: 8192
+          remove-dotnet: "true"
+          remove-android: "true"
+          remove-haskell: "true"
+          remove-codeql: "true"
+
+      - name: 设定 CONFIG 环境变量
+        run: |
+          CONFIG="${ANDROID_VERSION_FIXED}-${KERNEL_VERSION_FIXED}-${{ inputs.sub_level }}"
+          echo "CONFIG=$CONFIG" >> $GITHUB_ENV
+          echo "CONFIG 设置为: $CONFIG"
+
+      - name: 安装 ccache 及依赖
+        run: sudo apt update && sudo apt upgrade -y && sudo apt install -y ccache python3 git curl
+
+      - name: 配置 ccache
+        run: |
+          mkdir -p ~/.cache/bazel
+          ccache --version
+          ccache --max-size=2G
+          ccache --set-config=compression=true
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+      
+      - name: 从缓存中还原ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          # 使用固定版本和输入 sub_level 构造缓存键
+          key: ${ANDROID_VERSION_FIXED}-${KERNEL_VERSION_FIXED}-${{ inputs.sub_level }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${ANDROID_VERSION_FIXED}-${KERNEL_VERSION_FIXED}-${{ inputs.sub_level }}-ccache-
+      
+      - name: 缓存工具链
+        id: cache-toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            kernel-build-tools
+            mkbootimg
+          key: toolchain-${{ runner.os }}-gki-v1 # 通用工具链缓存键
+
+      - name: 下载工具链（如果未找到缓存）
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          AOSP_MIRROR=https://android.googlesource.com
+          BRANCH=main-kernel-build-2024 # GKI 工具链分支
+          git clone $AOSP_MIRROR/kernel/prebuilts/build-tools -b $BRANCH --depth 1 kernel-build-tools
+          git clone $AOSP_MIRROR/platform/system/tools/mkbootimg -b $BRANCH --depth 1 mkbootimg
+
+      - name: 设置构建工具环境变量
+        run: |
+          echo "AVBTOOL=$GITHUB_WORKSPACE/kernel-build-tools/linux-x86/bin/avbtool" >> $GITHUB_ENV
+          echo "MKBOOTIMG=$GITHUB_WORKSPACE/mkbootimg/mkbootimg.py" >> $GITHUB_ENV
+          echo "UNPACK_BOOTIMG=$GITHUB_WORKSPACE/mkbootimg/unpack_bootimg.py" >> $GITHUB_ENV
+
+      - name: 密钥设置
+        env:
+          BOOT_SIGN_KEY: ${{ secrets.BOOT_SIGN_KEY }}
+        run: |
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 > ./kernel-build-tools/linux-x86/share/avb/testkey_rsa2048.pem
+          echo "BOOT_SIGN_KEY_PATH=$GITHUB_WORKSPACE/kernel-build-tools/linux-x86/share/avb/testkey_rsa2048.pem" >> $GITHUB_ENV
+
+      - name: 安装 repo 工具
+        run: |
+          mkdir -p ./git-repo
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
+          chmod a+rx ./git-repo/repo
+          echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
+
+      - name: 克隆 AnyKernel3 和 SukiSU 相关依赖
+        run: |
+          echo "克隆 AnyKernel3 和 SukiSU 依赖..."
+          ANYKERNEL_BRANCH="gki-2.0" # AnyKernel3 分支
+          # SUSFS 分支针对 android14-6.1
+          SUSFS_BRANCH="gki-${ANDROID_VERSION_FIXED}-${KERNEL_VERSION_FIXED}" 
+
+          echo "SUSFS 使用分支: $SUSFS_BRANCH"
+          git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "$ANYKERNEL_BRANCH" AnyKernel3
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" susfs4ksu
+          # SukiSU 的补丁仓库
+          git clone https://github.com/ShirkNeko/SukiSU_patch.git SukiSU_patch
+
+      - name: 初始化和同步内核源代码 (android14-6.1)
+        run: |
+          echo "为配置创建文件夹: $CONFIG..."
+          mkdir -p "$CONFIG"
+          cd "$CONFIG"
+
+          echo "初始化和同步内核源码 (android14-6.1)..."
+          FORMATTED_BRANCH="${ANDROID_VERSION_FIXED}-${KERNEL_VERSION_FIXED}-${{ inputs.os_patch_level }}"
+          $REPO init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-${FORMATTED_BRANCH} --repo-rev=v2.16
+
+          REMOTE_BRANCH=$(git ls-remote https://android.googlesource.com/kernel/common ${FORMATTED_BRANCH})
+          DEFAULT_MANIFEST_PATH=.repo/manifests/default.xml
+
+          if grep -q deprecated <<< $REMOTE_BRANCH; then
+            echo "发现已弃用的分支: $FORMATTED_BRANCH. 修改 manifest..."
+            sed -i "s/\"${FORMATTED_BRANCH}\"/\"deprecated\/${FORMATTED_BRANCH}\"/g" $DEFAULT_MANIFEST_PATH
+          fi
+
+          $REPO --version
+          $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
+
+      - name: 确定 SukiSU 的分支参数
+        run: |
+          if [[ "${{ inputs.kernelsu_branch }}" == "Stable(标准)" ]]; then
+            echo "SUKISU_SETUP_BRANCH_ARG=-" >> $GITHUB_ENV # SukiSU 稳定版参数
+          elif [[ "${{ inputs.kernelsu_branch }}" == "Dev(开发)" ]]; then
+            echo "SUKISU_SETUP_BRANCH_ARG=-s susfs-dev" >> $GITHUB_ENV # SukiSU 开发版参数
+          else
+            echo "::error::未知的 SukiSU 分支选项: ${{ inputs.kernelsu_branch }}"
+            exit 1
+          fi
+          echo "SukiSU setup.sh 将使用参数: $(cat $GITHUB_ENV | grep SUKISU_SETUP_BRANCH_ARG)"
+
+      - name: 添加 SukiSU
+        run: |
+          echo "切换到配置目录: $CONFIG..."
+          cd "$CONFIG"
+          echo "添加 SukiSU (变体: $KERNELSU_VARIANT_FIXED)..."
+          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash ${{ env.SUKISU_SETUP_BRANCH_ARG }}
+      
+      - name: 为 SukiSU 安装 SUSFS 补丁
+        run: |
+          echo "切换到配置目录: $CONFIG..."
+          cd "$CONFIG"
+          echo "为 SukiSU 应用 SUSFS 补丁..."
+          
+          # 复制 SUSFS 通用补丁 (适用于 android14-6.1)
+          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${ANDROID_VERSION_FIXED}-${KERNEL_VERSION_FIXED}.patch ./common/
+          cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/
+          cp -r ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+
+          # SukiSU 的 setup.sh 通常会在内核源码根目录创建 KernelSU 文件夹 (或其他自定义名称)
+          # 如果 SukiSU 对其 KernelSU 目录有特定补丁，在此应用
+          # cd ./KernelSU # 或者 SukiSU 创建的实际目录名
+          # echo "应用 SukiSU 特定的 KernelSU 目录补丁 (如果存在)..."
+          # # 示例: cp ../../SukiSU_patch/path/to/specific_patch.patch ./
+          # # 示例: patch -p1 < specific_patch.patch || true
+          # cd .. # 返回内核源码根目录
+
+          cd ./common # 进入 common 目录打通用 gki 补丁
+          patch -p1 --forward --fuzz=3 < 50_add_susfs_in_gki-${ANDROID_VERSION_FIXED}-${KERNEL_VERSION_FIXED}.patch || echo "通用 SUSFS GKI 补丁可能已应用或部分不适用"
+
+      - name: 应用 SukiSU 的 syscall_hooks 补丁
+        run: |
+          echo "切换到目录: $CONFIG/common"
+          cd "$CONFIG/common"
+          echo "为 SukiSU 应用 syscall_hooks 补丁..."
+          cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
+          patch -p1 -F 3 < syscall_hooks.patch
+          
+      - name: 复制 SukiSU 源文件 & 应用 LZ4KD & ZSTDN 补丁 (for 6.1)
+        run: |
+          echo "切换到目录: $CONFIG/common"
+          cd "$CONFIG/common"
+          echo "复制 SukiSU zram 相关源文件 (lz4k, zstdn, lz4k_oplus)..."
+          cp -r ../../SukiSU_patch/other/zram/lz4k/include/linux/* ./include/linux/
+          cp -r ../../SukiSU_patch/other/zram/lz4k/lib/* ./lib/
+          cp -r ../../SukiSU_patch/other/zram/lz4k/crypto/* ./crypto/
+          cp -r ../../SukiSU_patch/other/zram/zstdn ./lib/
+          cp -r ../../SukiSU_patch/other/zram/lz4k_oplus ./lib/
+          
+          LZ4KD_PATCH_PATH="../../SukiSU_patch/other/zram/zram_patch/${KERNEL_VERSION_FIXED}/lz4kd.patch"
+          ZSTDN_PATCH_PATH="../../SukiSU_patch/other/zram/zram_patch/${KERNEL_VERSION_FIXED}/zstdn.patch"
+
+          if [ -f "$LZ4KD_PATCH_PATH" ]; then
+            cp "$LZ4KD_PATCH_PATH" ./lz4kd_6.1.patch
+            echo "正在打 lz4kd 补丁 (for 6.1)..."
+            patch -p1 -F 3 < lz4kd_6.1.patch || true
+            echo '完成 LZ4KD 补丁 (6.1)'
+          else
+            echo "::warning::未找到适用于 ${KERNEL_VERSION_FIXED} 的 LZ4KD 补丁: $LZ4KD_PATCH_PATH"
+          fi
+
+          if [ -f "$ZSTDN_PATCH_PATH" ]; then
+            cp "$ZSTDN_PATCH_PATH" ./zstdn_6.1.patch
+            echo "正在打 zstdn 补丁 (for 6.1)..."
+            patch -p1 -F 3 < zstdn_6.1.patch || true
+            echo '完成 ZSTDN 补丁 (6.1)'
+          else
+            echo "::warning::未找到适用于 ${KERNEL_VERSION_FIXED} 的 ZSTDN 补丁: $ZSTDN_PATCH_PATH"
+          fi
+
+      - name: 应用 SukiSU 的隐藏特征补丁
+        run: |
+          echo "切换到目录: $CONFIG/common"
+          cd "$CONFIG/common"
+          echo "为 SukiSU 应用隐藏特征补丁 (69_hide_stuff.patch)..."
+          cp ../../SukiSU_patch/69_hide_stuff.patch ./
+          patch -p1 -F 3 < 69_hide_stuff.patch
+
+      - name: LZ4KD & ZSTDN 内核配置 (android14-6.1)
+        run: |
+          echo "为 android14-6.1 写入 LZ4KD & ZSTDN config 依赖..."
+          CONFIG_FILE="$CONFIG/common/arch/arm64/configs/gki_defconfig"
+          MODULES_BZL_FILE="$CONFIG/common/modules.bzl"
+
+          # 确保 ZSMALLOC 和 ZRAM 为 y (编译进内核)
+          if grep -q "CONFIG_ZSMALLOC" -- "$CONFIG_FILE"; then
+            sed -i 's/CONFIG_ZSMALLOC=m/CONFIG_ZSMALLOC=y/g' "$CONFIG_FILE"
+          else
+            echo "CONFIG_ZSMALLOC=y" >> "$CONFIG_FILE"
+          fi
+          if grep -q "CONFIG_ZRAM" -- "$CONFIG_FILE"; then
+            sed -i 's/CONFIG_ZRAM=m/CONFIG_ZRAM=y/g' "$CONFIG_FILE"
+          else
+            echo "CONFIG_ZRAM=y" >> "$CONFIG_FILE"
+          fi
+              
+          # 对于 android14 (Bazel 构建系统), 修改 modules.bzl
+          # 移除内置的 zram.ko 和 zsmalloc.ko (因为已设为y)，添加 crypto_zstdn.ko
+          if [ -f "$MODULES_BZL_FILE" ]; then
+            sed -i 's/"drivers\/block\/zram\/zram\.ko",//g; s/"mm\/zsmalloc\.ko",//g' "$MODULES_BZL_FILE"
+            # 确保 crypto_zstdn.ko 只添加一次
+            if ! grep -q '"lib/zstdn/crypto_zstdn.ko",' "$MODULES_BZL_FILE"; then
+              sed -i '/^_ARM64_GKI_MODULES_LIST = \[/a \    "lib/zstdn/crypto_zstdn.ko",' "$MODULES_BZL_FILE"
+            fi
+            echo "Android14 Bazel: 已更新 modules.bzl 中 zram, zsmalloc, zstdn 的配置。"
+          else
+            echo "::warning:: 未找到 modules.bzl 文件: $MODULES_BZL_FILE"
+          fi
+          
+          # 根据需要决定是否强制关闭模块签名
+          echo "CONFIG_MODULE_SIG_FORCE=n" >> "$CONFIG_FILE" 
+          
+          # 添加必要的 CRYPTO 配置
+          echo "CONFIG_CRYPTO_LZ4HC=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CRYPTO_LZ4K=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CRYPTO_LZ4KD=y" >> "$CONFIG_FILE" # LZ4KD 编译进内核
+          echo "CONFIG_CRYPTO_842=y" >> "$CONFIG_FILE"
+          echo "CONFIG_CRYPTO_ZSTDN=m" >> "$CONFIG_FILE" # ZSTDN作为模块
+          echo "CONFIG_CRYPTO_LZ4K_OPLUS=y" >> "$CONFIG_FILE" # LZ4K_OPLUS 编译进内核
+          
+      - name: 添加 SukiSU 及 SUSFS 内核配置
+        run: |
+          echo "切换到目录: $CONFIG..."
+          cd "$CONFIG"
+          echo "为 SukiSU 添加内核配置到 gki_defconfig..."
+          GKI_DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
+
+          echo "# SukiSU and General KSU Configs" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KPM=y" >> "$GKI_DEFCONFIG_PATH" # Kernel Patch Module for SukiSU
+          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$GKI_DEFCONFIG_PATH" # 假设SukiSU不需要
+          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$GKI_DEFCONFIG_PATH" # SukiSU 使用手动 Hook
+          
+          echo "# TMPFS Configs" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_TMPFS_XATTR=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$GKI_DEFCONFIG_PATH"
+
+          echo "# Network Related Configs (TTL/HL & BBR)" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_TCP_CONG_BBR=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_NET_SCH_FQ=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_TCP_CONG_BIC=n" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_TCP_CONG_HTCP=n" >> "$GKI_DEFCONFIG_PATH"
+
+          echo "# SUSFS Specific Configs" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$GKI_DEFCONFIG_PATH" # 通常设为n，除非明确需要
+          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$GKI_DEFCONFIG_PATH" # 开发时开启，发布时可关闭
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$GKI_DEFCONFIG_PATH"
+
+          # 移除 check_defconfig (对于 Bazel 构建可能不直接适用或有其他机制)
+          # sed -i 's/check_defconfig//' ./common/build.config.gki # 注释掉，Bazel构建方式不同
+
+      - name: 配置内核版本名和编译时间戳 (android14-6.1 Bazel)
+        run: |
+          echo "切换到目录: $CONFIG..."
+          cd "$CONFIG"
+
+          # 将自定义版本后缀写入 gki_defconfig 的 CONFIG_LOCALVERSION
+          if [ ! -z "${{ inputs.version }}" ]; then
+            echo "CONFIG_LOCALVERSION=\"${{ inputs.version }}\"" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "已将自定义版本后缀 '${{ inputs.version }}' 添加到 gki_defconfig."
+          else
+            echo "未使用自定义版本后缀。"
+          fi
+
+          # 修改 mkcompile_h 中的 UTS_VERSION 时间戳
+          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sat Apr 20 04:20:00 UTC 2024"}' ./common/scripts/mkcompile_h
+          
+          # 针对 Bazel 构建 (android14+)
+          echo "为 Bazel 构建准备..."
+          # 移除 abi_gki_protected_exports 相关，避免潜在的 ABI 检查问题 (如果不需要严格 ABI 检查)
+          sed -i '/^[[:space:]]*"protected_exports_list"[[:space:]]*:[[:space:]]*"android\/abi_gki_protected_exports_aarch64",$/d' ./common/BUILD.bazel
+          rm -rf ./common/android/abi_gki_protected_exports_*
+          # 移除 -maybe-dirty 后缀，确保版本号干净
+          sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl
+          # 如果 gki_defconfig 中已有 CONFIG_LOCALVERSION，此行确保引号正确闭合，但要小心不要破坏已有设置
+          # sed -E -i '/^CONFIG_LOCALVERSION=/ s/(.*)"$/\1"/' ./common/arch/arm64/configs/gki_defconfig # 谨慎使用
+
+      - name: 使用 Bazel 构建内核 (android14-6.1) 并重试
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 45 # 增加超时时间
+          max_attempts: 3
+          retry_on: timeout
+          command: |
+            set -e
+            set -x
+            cd "$CONFIG"
+            echo "开始使用 Bazel 构建内核 (android14-6.1)..."
+            tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
+            echo "内核构建完成。"
+            ccache --show-stats
+
+      - name: 修补 Image 文件 (SukiSU特定, for android14-6.1 Bazel output)
+        # 此步骤仅当 SukiSU KPM 需要且内核版本不是6.6时执行
+        if: env.KERNELSU_VARIANT_FIXED == 'SukiSU' && env.KERNEL_VERSION_FIXED != '6.6'
+        run: |
+          echo "为 SukiSU 在 android14-6.1 (Bazel 输出) 上修补 Image 文件..."
+          IMAGE_DIR="$CONFIG/bazel-bin/common/kernel_aarch64/" # Bazel 输出路径
+          PATCH_SCRIPT_URL="https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux"
+          
+          cd "$IMAGE_DIR"
+          if [ -f "Image" ]; then
+            curl -LSs "$PATCH_SCRIPT_URL" -o patch_kpm
+            chmod +x patch_kpm
+            ./patch_kpm # 脚本应能处理当前目录的 Image 文件
+            if [ -f "oImage" ]; then # 假设脚本输出 oImage
+              rm -f Image
+              mv oImage Image
+              echo "Image 文件已通过 SukiSU KPM 脚本修补。"
+            else
+              echo "::warning:: SukiSU KPM 脚本未生成 oImage。Image 可能未被修补。"
+            fi
+          else
+            echo "::error:: 未在 Bazel 输出目录找到 Image 文件: $IMAGE_DIR"
+            exit 1
+          fi
+          cd ../../../../.. # 返回 GITHUB_WORKSPACE
+
+      - name: 创建 bootimgs 文件夹并复制镜像 (android14-6.1 Bazel output)
+        run: |
+          echo "在工作空间根目录创建 bootimgs 文件夹..."
+          mkdir -p $GITHUB_WORKSPACE/bootimgs
+
+          BAZEL_OUTPUT_IMAGE_DIR="$GITHUB_WORKSPACE/$CONFIG/bazel-bin/common/kernel_aarch64/"
+          echo "从 Bazel 输出目录复制 Image 和 Image.lz4..."
+          cp "${BAZEL_OUTPUT_IMAGE_DIR}Image" "$GITHUB_WORKSPACE/bootimgs/Image"
+          cp "${BAZEL_OUTPUT_IMAGE_DIR}Image.lz4" "$GITHUB_WORKSPACE/bootimgs/Image.lz4"
+          
+          # 同时复制到工作空间根目录供 AnyKernel3 使用
+          cp "${BAZEL_OUTPUT_IMAGE_DIR}Image" "$GITHUB_WORKSPACE/Image"
+          cp "${BAZEL_OUTPUT_IMAGE_DIR}Image.lz4" "$GITHUB_WORKSPACE/Image.lz4"
+
+          echo "创建 Image.gz..."
+          gzip -n -k -f -9 "$GITHUB_WORKSPACE/Image" > "$GITHUB_WORKSPACE/Image.gz"
+
+      - name: 使用 AnyKernel3 创建 ZIP 刷机包
+        run: |
+          echo "开始创建 AnyKernel3 ZIP 刷机包..."
+          cd $GITHUB_WORKSPACE/AnyKernel3
+
+          # 定义基础文件名，包含版本后缀
+          BASE_FILENAME="${ANDROID_VERSION_FIXED}-${KERNEL_VERSION_FIXED}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}${{ inputs.version }}"
+          
+          echo "创建 ${BASE_FILENAME}-AnyKernel3.zip..."
+          mv ../Image ./Image
+          zip -r9 "../${BASE_FILENAME}-AnyKernel3.zip" ./* -x ".git/*" "README.md" "anykernel.sh" # 排除不必要的文件
+          rm ./Image
+
+          echo "创建 ${BASE_FILENAME}-AnyKernel3-lz4.zip..."
+          mv ../Image.lz4 ./Image.lz4
+          zip -r9 "../${BASE_FILENAME}-AnyKernel3-lz4.zip" ./* -x ".git/*" "README.md" "anykernel.sh"
+          rm ./Image.lz4
+
+          echo "创建 ${BASE_FILENAME}-AnyKernel3-gz.zip..."
+          mv ../Image.gz ./Image.gz
+          zip -r9 "../${BASE_FILENAME}-AnyKernel3-gz.zip" ./* -x ".git/*" "README.md" "anykernel.sh"
+          rm ./Image.gz
+          cd $GITHUB_WORKSPACE
+
+      - name: 创建 boot.img 文件 (android14-6.1)
+        run: |
+          echo "开始创建 boot.img 文件..."
+          cd $GITHUB_WORKSPACE/bootimgs # bootimgs 目录应包含 Image, Image.lz4, Image.gz
+
+          BASE_FILENAME="${ANDROID_VERSION_FIXED}-${KERNEL_VERSION_FIXED}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}${{ inputs.version }}"
+
+          echo "创建 ${BASE_FILENAME}-boot.img..."
+          $MKBOOTIMG --header_version 4 --kernel Image --output boot_unsigned.img # Android 13+ 通常不需要 ramdisk 参数
+          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot_unsigned.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH --output ../"${BASE_FILENAME}-boot.img"
+          rm boot_unsigned.img
+
+          echo "创建 ${BASE_FILENAME}-boot-gz.img..."
+          $MKBOOTIMG --header_version 4 --kernel Image.gz --output boot_gz_unsigned.img
+          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot_gz_unsigned.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH --output ../"${BASE_FILENAME}-boot-gz.img"
+          rm boot_gz_unsigned.img
+
+          echo "创建 ${BASE_FILENAME}-boot-lz4.img..."
+          $MKBOOTIMG --header_version 4 --kernel Image.lz4 --output boot_lz4_unsigned.img
+          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot_lz4_unsigned.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH --output ../"${BASE_FILENAME}-boot-lz4.img"
+          rm boot_lz4_unsigned.img
+          cd $GITHUB_WORKSPACE
+
+      - name: 上传编译产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: SukiSU_kernel-${CONFIG}${inputs.version} # 产物名称包含配置和版本后缀
+          path: |
+            ${GITHUB_WORKSPACE}/*AnyKernel3.zip
+            ${GITHUB_WORKSPACE}/*.img
+          if-no-files-found: error # 如果没有文件则报错
