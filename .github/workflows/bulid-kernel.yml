@@ -50,7 +50,7 @@ on:
         type: boolean
         default: true
   schedule:
-    - cron: '0 */2 * * *' # 每2小时检查一次，您可以根据需要调整频率
+    - cron: '*/30 * * * *' # 每30分钟运行一次
 
 jobs:
   check_external_updates:
