@@ -221,6 +221,37 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash $BRANCH
           fi
 
+      # --- [新增步骤 15.5] 获取 SukiSU 版本号 ---
+      - name: 获取 SukiSU 版本号
+        id: get_sukisu_version
+        if: inputs.kernelsu_variant == 'SukiSU' # 只在编译 SukiSU 时运行
+        run: |
+          echo "尝试获取 SukiSU 版本号..."
+          # SukiSU 的 setup.sh 通常会将源码放在 $CONFIG/KernelSU 目录下
+          SUKI_MAKEFILE="$CONFIG/KernelSU/Makefile" 
+          SUKI_VERSION="unknown" # 默认值
+          if [ -f "$SUKI_MAKEFILE" ]; then
+            VERSION_CODE_LINE=$(grep -E '^\s*SUKISU_VERSION_CODE\s*:=\s*\d+' "$SUKI_MAKEFILE")
+            if [[ -n "$VERSION_CODE_LINE" ]]; then
+               SUKI_VERSION=$(echo "$VERSION_CODE_LINE" | grep -oP '\d+')
+               if [[ -n "$SUKI_VERSION" ]]; then
+                  echo "获取到 SukiSU 版本号: $SUKI_VERSION"
+               else
+                  echo "::warning:: 在 $SUKI_MAKEFILE 中解析 SUKISU_VERSION_CODE 失败。"
+                  SUKI_VERSION="unknown" 
+               fi
+            else
+               echo "::warning:: 在 $SUKI_MAKEFILE 中未找到 SUKISU_VERSION_CODE 定义行。"
+               SUKI_VERSION="unknown"
+            fi
+          else
+            echo "::warning:: 未找到 SukiSU Makefile: $SUKI_MAKEFILE 。无法获取版本号。"
+            SUKI_VERSION="unknown"
+          fi
+          echo "version_code=$SUKI_VERSION" >> $GITHUB_OUTPUT
+          echo "::set-output name=version_code::$SUKI_VERSION" # 兼容旧 runner
+      
+      
       - name: 为 KernelSU 变体安装 SUSFS 补丁
         run: |
           echo "Changing to configuration directory: $CONFIG..."
@@ -650,10 +681,81 @@ jobs:
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
           cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
 
-      - name: 上传编译资产
+      # --- [新增步骤 28.5] 重命名产物文件 ---
+      - name: 重命名产物文件 (如果编译 SukiSU)
+        # 只有当编译的是 SukiSU 时才执行重命名
+        if: inputs.kernelsu_variant == 'SukiSU' 
+        run: |
+          echo "开始重命名产物文件 (仅 SukiSU)..."
+          cd $GITHUB_WORKSPACE
+
+          SUKI_VERSION="${{ steps.get_sukisu_version.outputs.version_code || 'unknown' }}"
+          if [ "$SUKI_VERSION" == "unknown" ]; then
+             echo "::warning:: SukiSU 版本号未知，将使用 'unknown' 代替。"
+          fi
+
+          # --- 构造新文件名前缀 ---
+          # 注意：这里使用 inputs，因为 gki-kernel.yml 是被调用的
+          NEW_ANYKERNEL_PREFIX="AnyKernel3_${{ inputs.android_version }}_${{ inputs.kernel_version }}.${{ inputs.sub_level }}_${SUKI_VERSION}"
+          NEW_BOOTIMG_PREFIX="boot_${{ inputs.android_version }}_${{ inputs.kernel_version }}.${{ inputs.sub_level }}_${SUKI_VERSION}"
+
+          echo "新 AnyKernel3 前缀: $NEW_ANYKERNEL_PREFIX"
+          echo "新 boot.img 前缀: $NEW_BOOTIMG_PREFIX"
+
+          # --- 使用通配符查找原始文件并重命名 ---
+          # 查找原始 AnyKernel3 zip (假设只有一个主要的)
+          # 注意：原始文件名可能包含 inputs.version 后缀，也可能不包含，通配符需要匹配
+          original_anykernel_zip=$(ls -1 *AnyKernel3.zip 2>/dev/null | head -n 1) 
+          if [ -n "$original_anykernel_zip" ]; then
+             FINAL_ANYKERNEL_ZIP="${NEW_ANYKERNEL_PREFIX}.zip"
+             echo "重命名 $original_anykernel_zip 为 $FINAL_ANYKERNEL_ZIP"
+             mv "$original_anykernel_zip" "$FINAL_ANYKERNEL_ZIP"
+          else
+             echo "::warning:: 未找到 *AnyKernel3.zip 文件进行重命名。"
+          fi
+
+          # 重命名 boot images (同样使用通配符)
+          original_boot_img=$(ls -1 *-boot.img 2>/dev/null | head -n 1)
+          if [ -n "$original_boot_img" ]; then
+             FINAL_BOOT_IMG="${NEW_BOOTIMG_PREFIX}.img"
+             echo "重命名 $original_boot_img 为 $FINAL_BOOT_IMG"
+             mv "$original_boot_img" "$FINAL_BOOT_IMG"
+          else
+             echo "::warning:: 未找到 *-boot.img 文件进行重命名。"
+          fi
+
+          original_boot_gz_img=$(ls -1 *-boot-gz.img 2>/dev/null | head -n 1)
+          if [ -n "$original_boot_gz_img" ]; then
+             FINAL_BOOT_GZ_IMG="${NEW_BOOTIMG_PREFIX}-gz.img"
+             echo "重命名 $original_boot_gz_img 为 $FINAL_BOOT_GZ_IMG"
+             mv "$original_boot_gz_img" "$FINAL_BOOT_GZ_IMG"
+          else
+             echo "::warning:: 未找到 *-boot-gz.img 文件进行重命名。"
+          fi
+
+          original_boot_lz4_img=$(ls -1 *-boot-lz4.img 2>/dev/null | head -n 1)
+          if [ -n "$original_boot_lz4_img" ]; then
+             FINAL_BOOT_LZ4_IMG="${NEW_BOOTIMG_PREFIX}-lz4.img"
+             echo "重命名 $original_boot_lz4_img 为 $FINAL_BOOT_LZ4_IMG"
+             mv "$original_boot_lz4_img" "$FINAL_BOOT_LZ4_IMG"
+          else
+             echo "::warning:: 未找到 *-boot-lz4.img 文件进行重命名。"
+          fi
+
+          echo "清理其他可能存在的 AnyKernel3 变体 zip 文件..."
+          rm -f *-AnyKernel3-gz.zip *-AnyKernel3-lz4.zip || true # 删除 gz 和 lz4 变体，只保留主 zip
+
+          echo "文件重命名完成。当前工作目录内容："
+          ls -l .
+
+      # --- [修改点] 修改上传步骤以匹配新文件名 ---
+      - name: 上传编译产物
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}
+          # name 可以保持不变，或者修改为你喜欢的格式
+          name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}${{ inputs.version }}_${{ steps.get_sukisu_version.outputs.version_code || 'unknown' }}
+          # path 只匹配重命名后的文件格式
           path: |
-            *AnyKernel3.zip
-            *.img
+            AnyKernel3_*.zip
+            boot_*.img 
+          if-no-files-found: error
