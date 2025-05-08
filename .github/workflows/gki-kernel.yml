@@ -749,13 +749,14 @@ jobs:
           ls -l .
 
       # --- [修改点] 修改上传步骤以匹配新文件名 ---
+      # --- [修改点] 修改上传步骤，使其路径根据条件变化 ---
       - name: 上传编译产物
         uses: actions/upload-artifact@v4
         with:
-          # name 可以保持不变，或者修改为你喜欢的格式
-          name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}${{ inputs.version }}_${{ steps.get_sukisu_version.outputs.version_code || 'unknown' }}
-          # path 只匹配重命名后的文件格式
+          # 产物名称可以包含变体信息
+          name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}${{ inputs.version }}_${{ steps.get_sukisu_version.outputs.version_code || '' }} # 非SukiSU时版本号为空
+          # --- 根据是否为 SukiSU 使用不同的路径模式 ---
           path: |
-            AnyKernel3_*.zip
-            boot_*.img 
+            ${{ github.workspace }}/${{ inputs.kernelsu_variant == 'SukiSU' && 'AnyKernel3_*.zip' || '*-AnyKernel3.zip' }}
+            ${{ github.workspace }}/${{ inputs.kernelsu_variant == 'SukiSU' && 'boot_*.img' || '*-boot*.img' }}
           if-no-files-found: error
