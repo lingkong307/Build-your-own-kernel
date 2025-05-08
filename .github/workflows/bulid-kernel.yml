@@ -58,15 +58,12 @@ jobs:
     outputs:
       new_run_detected: ${{ steps.check.outputs.new_run_detected }}
       latest_external_run_id: ${{ steps.check.outputs.latest_external_run_id }}
-      # 为计划任务触发时设置的默认参数 (如果inputs在其他地方也用到)
-      # 或者直接在后续作业的with块中为计划任务设置默认值
-      # 以下作为示例，如果 prepare_version 和 build_kernel 作业可以直接从 inputs 或默认值获取，则更好
       kernelsu_variant_default: 'SukiSU'
       kernelsu_branch_default: 'Dev(开发)'
       version_type_default: '随机生成'
       custom_version_suffix_default: ''
-      use_zram_default: true
-      use_kpm_default: true
+      use_zram_default: true # 这是布尔值 true
+      use_kpm_default: true  # 这是布尔值 true
     steps:
       - name: Restore last processed run ID from cache
         id: cache_restore_id
@@ -84,15 +81,14 @@ jobs:
         run: |
           set -e # 如果命令失败则退出
           echo "Fetching latest successful workflow run for $TARGET_WORKFLOW_FILE from $TARGET_REPO (event: push)"
-          # 查询由 push 事件触发的最新成功运行
           API_RESPONSE=$(gh api "repos/$TARGET_REPO/actions/workflows/$TARGET_WORKFLOW_FILE/runs?status=success&event=push&per_page=1")
-          LATEST_EXTERNAL_RUN_ID=$(echo "$API_RESPONSE" | jq -r '.workflow_runs[0].id // ""') # 使用 jq 解析 ID，如果为空则设为空字符串
+          LATEST_EXTERNAL_RUN_ID=$(echo "$API_RESPONSE" | jq -r '.workflow_runs[0].id // ""')
 
           if [[ -z "$LATEST_EXTERNAL_RUN_ID" || "$LATEST_EXTERNAL_RUN_ID" == "null" ]]; then
             echo "No successful 'push' event runs found in $TARGET_REPO/$TARGET_WORKFLOW_FILE or API error."
             echo "new_run_detected=false" >> "$GITHUB_OUTPUT"
             echo "latest_external_run_id=" >> "$GITHUB_OUTPUT"
-            exit 0 # 成功退出，没有新运行需要处理
+            exit 0 
           fi
 
           echo "Latest external run ID from API: $LATEST_EXTERNAL_RUN_ID"
@@ -109,30 +105,23 @@ jobs:
           if [[ "$LATEST_EXTERNAL_RUN_ID" != "$CACHED_RUN_ID" ]]; then
             echo "New run detected. API ID: $LATEST_EXTERNAL_RUN_ID, Cached ID: $CACHED_RUN_ID"
             echo "new_run_detected=true" >> "$GITHUB_OUTPUT"
-            # 将新的ID写入文件，actions/cache@v4 会在作业结束时尝试保存这个文件
             echo "$LATEST_EXTERNAL_RUN_ID" > ./last_processed_sukisu_run_id.txt
           else
             echo "No new run detected. API ID ($LATEST_EXTERNAL_RUN_ID) is same as cached."
             echo "new_run_detected=false" >> "$GITHUB_OUTPUT"
-            # 如果缓存文件不存在（例如首次运行或缓存未命中），且从API获取到了有效ID，则创建文件以供缓存
             if [[ ! -f "./last_processed_sukisu_run_id.txt" && ! -z "$LATEST_EXTERNAL_RUN_ID" ]]; then
                echo "Priming cache with current latest ID: $LATEST_EXTERNAL_RUN_ID"
                echo "$LATEST_EXTERNAL_RUN_ID" > ./last_processed_sukisu_run_id.txt
             fi
           fi
-      # actions/cache@v4 (id: cache_restore_id) 会在作业结束时，
-      # 如果 ./last_processed_sukisu_run_id.txt 的内容发生变化或缓存键是新的，
-      # 自动尝试保存该文件到缓存。
 
   prepare_version:
     runs-on: ubuntu-latest
     outputs:
       version_suffix_value: ${{ steps.version_generator.outputs.version_value }}
-    # 仅当手动触发或计划任务检测到新运行时运行
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && needs.check_external_updates.outputs.new_run_detected == 'true')
-    needs: [check_external_updates] # 确保 check_external_updates 先运行并提供输出
+    needs: [check_external_updates] 
     env:
-      # 根据触发事件类型条件性地设置环境变量
       INPUT_VERSION_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.version_type || needs.check_external_updates.outputs.version_type_default }}
       INPUT_CUSTOM_SUFFIX: ${{ github.event_name == 'workflow_dispatch' && inputs.custom_version_suffix || needs.check_external_updates.outputs.custom_version_suffix_default }}
     steps:
@@ -157,16 +146,17 @@ jobs:
           echo "Generated version suffix: ${VERSION_OUTPUT}"
           echo "version_value=${VERSION_OUTPUT}" >> "$GITHUB_OUTPUT"
 
-  build_kernel: # 作业名称从 build-kernel-a14-6-1 更改为更通用的 build_kernel
-    # 仅当手动触发或计划任务检测到新运行时运行
+  build_kernel: 
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && needs.check_external_updates.outputs.new_run_detected == 'true')
-    needs: [check_external_updates, prepare_version] # 依赖于检查结果和版本准备
-    uses: ./.github/workflows/kernel-a14-6.1.yml
+    needs: [check_external_updates, prepare_version] 
+    uses: ./.github/workflows/kernel-a14-6.1.yml # 这是您的可重用工作流
     secrets: inherit
     with:
-      make_release: false # 假设这个值是固定的
+      make_release: false 
       kernelsu_variant: ${{ github.event_name == 'workflow_dispatch' && inputs.kernelsu_variant || needs.check_external_updates.outputs.kernelsu_variant_default }}
       kernelsu_branch: ${{ github.event_name == 'workflow_dispatch' && inputs.kernelsu_branch || needs.check_external_updates.outputs.kernelsu_branch_default }}
       version: ${{ needs.prepare_version.outputs.version_suffix_value }}
+      # --- 关键检查点：确保这两行的结构在您的实际文件中是这样的 ---
+      # --- 即，键名 (use_zram:)、冒号、空格、表达式都正确 ---
       use_zram: ${{ github.event_name == 'workflow_dispatch' && inputs.use_zram || needs.check_external_updates.outputs.use_zram_default }}
       use_kpm: ${{ github.event_name == 'workflow_dispatch' && inputs.use_kpm || needs.check_external_updates.outputs.use_kpm_default }}
