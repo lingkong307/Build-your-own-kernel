@@ -1,5 +1,5 @@
 # 工作流名称：GKI 内核构建（优化版：包含 SukiSU 版本号重命名）
-name: GKI Kernel Build (Optimized with SukiSU Version Renaming)
+name: GKI Kernel Build
 
 # 权限设置
 permissions:
@@ -44,7 +44,6 @@ on:
         required: true
         type: boolean
         default: true
-    secrets: inherit 
 
 # 定义任务
 jobs:
