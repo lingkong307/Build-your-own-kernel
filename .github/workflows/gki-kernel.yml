@@ -40,11 +40,9 @@ on:
       use_zram:
         required: true
         type: boolean
-        default: true
       use_kpm:
         required: true
         type: boolean
-        default: true
 
 jobs:
   build-kernel-kernelsu-susfs:
