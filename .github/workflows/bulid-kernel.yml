@@ -1,8 +1,8 @@
 name: A编译内核
 
 permissions:
-  contents: write  # Allow writing to repository contents (for pushing tags)
-  actions: write   # Allows triggering actions
+  contents: write
+  actions: write
 
 on:
   workflow_dispatch:
@@ -26,10 +26,11 @@ on:
           - Dev(开发)
           - Other(其他/指定)
         default: Dev(开发)
-      version:
-        description: '自定义版本名(如6.1.93后面的字符/留空则使用默认版本号)'
+      version: # 修改了描述以符合新的逻辑
+        description: '自定义版本后缀 (例如 -MyCustomSuffix)。如果留空，将生成随机后缀。'
         required: false
-        type: string
+        type: string # 用户输入的是字符串
+        # default: "" (type: string 的默认值就是空字符串)
       use_zram:
         description: '是否开启增加更多ZRAM算法?'
         required: true
@@ -40,15 +41,46 @@ on:
         required: true
         type: boolean
         default: true
+
 jobs:
+  prepare_final_version: # 新增作业：准备最终的版本字符串
+    runs-on: ubuntu-latest
+    outputs:
+      version_string: ${{ steps.generate_version.outputs.version_string }}
+    steps:
+      - name: Generate or Use Custom Version String
+        id: generate_version
+        env:
+          # 从 workflow_dispatch 获取用户输入的 version，注意 github.event.inputs 结构
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          FINAL_VERSION=""
+          if [[ -n "$INPUT_VERSION" ]]; then
+            echo "使用用户提供的自定义版本后缀: $INPUT_VERSION"
+            FINAL_VERSION="$INPUT_VERSION"
+          else
+            echo "未提供自定义版本后缀，正在生成随机版本后缀..."
+            FIXED_PART="-android14-11"
+            PREFIX1="gd"
+            PREFIX2="ab"
+            # 生成 11 位随机十六进制字符 (a-f, 0-9)
+            RANDOM_HEX=$(head /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 11 || true)
+            # 生成 8 位随机数字 (0-9)
+            RANDOM_DIGITS=$(head /dev/urandom | LC_ALL=C tr -dc '0-9' | head -c 8 || true)
+            FINAL_VERSION="${FIXED_PART}-${PREFIX1}${RANDOM_HEX}-${PREFIX2}${RANDOM_DIGITS}"
+            echo "生成的随机版本后缀: $FINAL_VERSION"
+          fi
+          echo "version_string=${FINAL_VERSION}" >> "$GITHUB_OUTPUT"
 
   build-kernel-a14-6-1:
+    needs: [prepare_final_version] # <--- 添加依赖，确保先获取版本字符串
     uses: ./.github/workflows/kernel-a14-6.1.yml
     secrets: inherit
     with:
       make_release: false
       kernelsu_variant: ${{ inputs.kernelsu_variant }}
       kernelsu_branch: ${{ inputs.kernelsu_branch }}
-      version: ${{ inputs.version }}
-      use_zram: ${{ inputs.use_zram }}
-      use_kpm: ${{ inputs.use_kpm }}
+      version: ${{ needs.prepare_final_version.outputs.version_string }} # <--- 使用上一个作业生成的版本字符串
+      # 将布尔输入转换为字符串 "true" 或 "false" 以匹配 kernel-a14-6.1.yml 的 string 类型输入
+      use_zram: ${{ format('{0}', inputs.use_zram) }}
+      use_kpm: ${{ format('{0}', inputs.use_kpm) }}
