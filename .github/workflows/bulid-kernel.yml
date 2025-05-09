@@ -62,8 +62,8 @@ jobs:
       kernelsu_branch_default: 'Dev(开发)'
       version_type_default: '随机生成'
       custom_version_suffix_default: ''
-      use_zram_default: true # 这是布尔值 true
-      use_kpm_default: false  # 这是布尔值 true
+      use_zram_default: 'true'  # 关键修改：布尔值转为字符串
+      use_kpm_default: 'false'   # 关键修改：布尔值转为字符串
     steps:
       - name: Restore last processed run ID from cache
         id: cache_restore_id
@@ -149,14 +149,13 @@ jobs:
   build_kernel: 
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && needs.check_external_updates.outputs.new_run_detected == 'true')
     needs: [check_external_updates, prepare_version] 
-    uses: ./.github/workflows/kernel-a14-6.1.yml # 这是您的可重用工作流
+    uses: ./.github/workflows/kernel-a14-6.1.yml
     secrets: inherit
     with:
       make_release: false 
       kernelsu_variant: ${{ github.event_name == 'workflow_dispatch' && inputs.kernelsu_variant || needs.check_external_updates.outputs.kernelsu_variant_default }}
       kernelsu_branch: ${{ github.event_name == 'workflow_dispatch' && inputs.kernelsu_branch || needs.check_external_updates.outputs.kernelsu_branch_default }}
       version: ${{ needs.prepare_version.outputs.version_suffix_value }}
-      # --- 关键检查点：确保这两行的结构在您的实际文件中是这样的 ---
-      # --- 即，键名 (use_zram:)、冒号、空格、表达式都正确 ---
-      use_zram: ${{ (github.event_name == 'workflow_dispatch' && inputs.use_zram) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_zram_default) }}
-      use_kpm: ${{ (github.event_name == 'workflow_dispatch' && inputs.use_kpm) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_kpm_default) }}
+      # 关键修改：添加toString类型转换
+      use_zram: ${{ ((github.event_name == 'workflow_dispatch' && inputs.use_zram) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_zram_default)) | toString }}
+      use_kpm: ${{ ((github.event_name == 'workflow_dispatch' && inputs.use_kpm) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_kpm_default)) | toString }}
