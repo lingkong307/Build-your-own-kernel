@@ -96,7 +96,7 @@ jobs:
 
           CACHED_RUN_ID=""
           if [[ -f "./last_processed_sukisu_run_id.txt" ]]; then
-            CACHED_RUN_ID=$(cat "./last_processed_sukisu_run_id.txt")
+            CACHED_RUN_ID=$(<"./last_processed_sukisu_run_id.txt")
             echo "Cached (previously processed) run ID: $CACHED_RUN_ID"
           else
             echo "No cached run ID found. This might be the first check or cache was cleared."
