@@ -63,7 +63,7 @@ jobs:
       version_type_default: '随机生成'
       custom_version_suffix_default: ''
       use_zram_default: true # 这是布尔值 true
-      use_kpm_default: true  # 这是布尔值 true
+      use_kpm_default: false  # 这是布尔值 true
     steps:
       - name: Restore last processed run ID from cache
         id: cache_restore_id
