@@ -1,10 +1,10 @@
 name: GKI Kernel Build
 permissions:
-  contents: write
-  actions: write
+  contents: write  # Allow writing to repository contents (for pushing tags)
+  actions: write   # Allows triggering actions
 
 on:
-  workflow_call:
+  workflow_call: # This allows this workflow to be called from another workflow
     inputs:
       make_release:
         required: true
@@ -28,20 +28,23 @@ on:
       kernelsu_branch:
         required: true
         type: string
+      # kernelsu_branch_other:
+      #   required: false
+      #   type: string
       revision:
         required: false
         type: string
       version:
         required: false
         type: string
-      use_zram:
+      use_zram: # 您的主工作流应传递字符串 "true" 或 "false"
         required: true
         type: string
-        default: "true"
-      use_kpm:
+        default: "true" # 保持与您原始文件一致的字符串 "true"
+      use_kpm:  # 您的主工作流应传递字符串 "true" 或 "false"
         required: true
         type: string
-        default: "true"
+        default: "true" # 保持与您原始文件一致的字符串 "true"
 
 jobs:
   build-kernel-kernelsu-susfs:
@@ -65,8 +68,12 @@ jobs:
 
       - name: 设定 CONFIG 环境变量
         run: |
+          # Set CONFIG dynamically based on inputs values
           CONFIG="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.sub_level }}"
+
+          # Set CONFIG as an environment variable for future steps
           echo "CONFIG=$CONFIG" >> $GITHUB_ENV
+
           echo "CONFIG set to: $CONFIG"
 
       - name: 安装 ccache
@@ -120,6 +127,7 @@ jobs:
 
       - name: 安装仓库
         run: |
+          # Install dependencies
           mkdir -p ./git-repo
           curl https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
           chmod a+rx ./git-repo/repo
@@ -128,28 +136,43 @@ jobs:
       - name: 克隆 AnyKernel3 和其他依赖项
         run: |
           echo "Cloning AnyKernel3 and other dependencies..."
+
           ANYKERNEL_BRANCH="gki-2.0"
           SUSFS_BRANCH="gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}"
+
+          # Debug print the branches
           echo "Using branch for SUSFS: $SUSFS_BRANCH"
+
+          # Clone repositories using the branch names
           git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "$ANYKERNEL_BRANCH" --depth 1
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" --depth 1
           git clone https://github.com/WildPlusKernel/kernel_patches.git --depth 1
+          # Sukisu的补丁仓库
           git clone https://github.com/ShirkNeko/SukiSU_patch.git --depth 1
       
+      # "设置 CONFIG 环境变量" 步骤已在前面执行
+
       - name: 初始化和同步内核源代码
         run: |
           echo "Creating folder for configuration: $CONFIG..."
           mkdir -p "$CONFIG"
           cd "$CONFIG"
+
+          # Initialize and sync kernel source
           echo "Initializing and syncing kernel source..."
           FORMATTED_BRANCH="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}"
           $REPO init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-${FORMATTED_BRANCH} --repo-rev=v2.16
+
           REMOTE_BRANCH=$(git ls-remote https://android.googlesource.com/kernel/common ${FORMATTED_BRANCH})
           DEFAULT_MANIFEST_PATH=.repo/manifests/default.xml
+
+          # Check if branch is deprecated
           if grep -q deprecated <<< $REMOTE_BRANCH; then
             echo "Found deprecated branch: $FORMATTED_BRANCH"
             sed -i "s/\"${FORMATTED_BRANCH}\"/\"deprecated\/${FORMATTED_BRANCH}\"/g" $DEFAULT_MANIFEST_PATH
           fi
+
+          # Sync repo and apply patches
           $REPO --version
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
 
@@ -174,6 +197,7 @@ jobs:
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
+
           if [ "${{ inputs.kernelsu_variant }}" == "Official" ]; then
             echo "Adding KernelSU Official..."
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash $BRANCH
@@ -192,7 +216,10 @@ jobs:
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
+
           echo "Applying SUSFS patches..."
+
+          # Copy SUSFS patches
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
@@ -212,6 +239,7 @@ jobs:
             cd ./KernelSU
             cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
             patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
+
             echo "Applying MKSU specific SUSFS patch..."
             cp ../../kernel_patches/mksu/mksu_susfs.patch ./
             patch -p1 < mksu_susfs.patch || true
@@ -219,25 +247,27 @@ jobs:
             patch -p1 < fix.patch || true
           elif [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
             echo "Applying SUSFS patches for SukiSU..."
-            cd ./KernelSU 
-            echo "Applying SukiSU specific SUSFS patch..." 
+            cd ./KernelSU # Assuming SukiSU also uses KernelSU directory for these base patches
+            echo "Applying SukiSU specific SUSFS patch..." # Placeholder for SukiSU specific logic if any
           else
             echo "Invalid KernelSU variant selected!"
             exit 1
           fi
-          cd ../common 
+
+          cd ../common
           patch -p1 --fuzz=3 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
+
           FORMATTED_BRANCH="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}"
           if [ "$FORMATTED_BRANCH" == "android15-6.6-2024-08" ] || [ "$FORMATTED_BRANCH" == "android15-6.6-2024-09" ]; then
             echo "Applying fix 6.6.30 6.6.30&46 patches"
             curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/fix/fix6.6.patch -o test.patch
             patch -p1 < test.patch || true
           fi
-
       - name: 应用新的HOOKS补丁
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/common"
+
           if [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
             echo "Applying hooks for KernelSU-Next..."
             cp ../../kernel_patches/next/syscall_hooks.patch ./
@@ -257,10 +287,12 @@ jobs:
           cp -r ../../SukiSU_patch/other/zram/lz4k/lib/* ./lib/
           cp -r ../../SukiSU_patch/other/zram/lz4k/crypto/* ./crypto/
           cp -r ../../SukiSU_patch/other/zram/lz4k_oplus ./lib/
+
           cp ../../SukiSU_patch/other/zram/zram_patch/${{ inputs.kernel_version }}/lz4kd.patch ./
           echo "正在打lz4kd补丁"
           patch -p1 -F 3 < lz4kd.patch || true
           echo '完成LZ4KD补丁'
+
           cp ../../SukiSU_patch/other/zram/zram_patch/${{ inputs.kernel_version }}/lz4k_oplus.patch ./
           echo "正在打lz4k_oplus补丁"
           patch -p1 -F 3 < lz4k_oplus.patch || true
@@ -270,6 +302,7 @@ jobs:
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/common"
+          # Apply additional patch
           if [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
             cp ../../SukiSU_patch/69_hide_stuff.patch ./
             patch -p1 -F 3 < 69_hide_stuff.patch
@@ -281,9 +314,9 @@ jobs:
       - name: LZ4KD&Lz4k_oplus配置
         if: ${{ inputs.use_zram == 'true' }} # MODIFIED: Explicit string comparison
         run: |
-          # This logic is kept as you provided
           echo "写入LZ4KD&ZSTDN config依赖"
           CONFIG_FILE="$CONFIG/common/arch/arm64/configs/gki_defconfig"
+
           if [ "${{ inputs.kernel_version }}" = "5.10" ]; then
             echo "CONFIG_ZSMALLOC=y" >> "$CONFIG_FILE"
             echo "CONFIG_ZRAM=y" >> "$CONFIG_FILE"
@@ -291,7 +324,9 @@ jobs:
             echo "CONFIG_CRYPTO_LZO=y" >> "$CONFIG_FILE"
             echo "CONFIG_ZRAM_DEF_COMP_LZ4KD=y" >> "$CONFIG_FILE"
           fi
+
           if [ "${{ inputs.kernel_version }}" != "6.6" ] && [ "${{ inputs.kernel_version }}" != "5.10" ]; then
+            # sed -i 's/CONFIG_MODULE_SIG=y/CONFIG_MODULE_SIG=n/g' "$CONFIG_FILE"
             if grep -q "CONFIG_ZSMALLOC" -- "$CONFIG_FILE"; then
               echo "提示：文件 $CONFIG_FILE 包含字符串 CONFIG_ZSMALLOC。"
               sed -i 's/CONFIG_ZSMALLOC=m/CONFIG_ZSMALLOC=y/g' "$CONFIG_FILE"
@@ -301,10 +336,12 @@ jobs:
             fi
             sed -i 's/CONFIG_ZRAM=m/CONFIG_ZRAM=y/g' "$CONFIG_FILE"
           fi
+
           if [ "${{ inputs.kernel_version }}" = "6.6" ]; then
             echo "CONFIG_ZSMALLOC=y" >> "$CONFIG_FILE"
             sed -i 's/CONFIG_ZRAM=m/CONFIG_ZRAM=y/g' "$CONFIG_FILE"
           fi
+
           if [ "${{ inputs.android_version }}" = "android14" ] || [ "${{ inputs.android_version }}" = "android15" ]; then
             sed -i 's/"drivers\/block\/zram\/zram\.ko",//g; s/"mm\/zsmalloc\.ko",//g' "$CONFIG/common/modules.bzl"
             echo "CONFIG_MODULE_SIG_FORCE=n" >> "$CONFIG_FILE"
@@ -314,6 +351,7 @@ jobs:
             touch "$CONFIG/common/android/gki_aarch64_modules"
             echo '5.10&5.15:已修复zram&zsmalloc'
           fi
+
           if grep -q "CONFIG_ZSMALLOC=y" "$CONFIG_FILE" && grep -q "CONFIG_ZRAM=y" "$CONFIG_FILE"; then
             echo "CONFIG_CRYPTO_LZ4HC=y" >> "$CONFIG_FILE"
             echo "CONFIG_CRYPTO_LZ4K=y" >> "$CONFIG_FILE"
@@ -324,33 +362,35 @@ jobs:
 
       - name: 添加所有管理器
         run: |
-          # This logic is kept as you provided
           cd "$CONFIG"
           case "${{ inputs.kernelsu_variant }}" in
             "Official")
               echo "Applying Manager patch for Official KernelSU..."
+              #cp ../kernel_patches/ksu/manager.patch ./
               ;;
-            "NEXT") # Note: Your variant options use "Next", this uses "NEXT"
+            "NEXT") # Note: Your variant option is "Next" (capital N)
               echo "Applying Manager patch for KernelSU Next..."
-              cd KernelSU-Next
+              cd KernelSU-Next # This directory must exist
               cp ../../kernel_patches/next/manager.patch ./
               ;;
             "MKSU")
               echo "Applying Manager patch for MKSU..."
+              #cp ../kernel_patches/mksu/manager.patch .//
               ;;
           esac
-          patch -p1 --fuzz=3 < manager.patch || echo "No Manager Patch"
+          # This patch command assumes manager.patch is in $CONFIG dir, ensure it is copied there by above case.
+          patch -p1 --fuzz=3 < manager.patch || echo "No Manager Patch or patch failed"
 
       - name: 添加SUSFS配置设置
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
           echo "Adding configuration settings to gki_defconfig..."
-          GKI_DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig"
+          GKI_DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig" # Define once
 
           echo "CONFIG_KSU=y" >> "$GKI_DEFCONFIG_PATH"
 
-          if [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then # Note: Using "Next" here
+          if [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then # Note: Using "Next"
             echo "CONFIG_KSU_WITH_KPROBES=n" >> "$GKI_DEFCONFIG_PATH"
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$GKI_DEFCONFIG_PATH"
           elif [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
@@ -358,7 +398,7 @@ jobs:
             if [ "${{ inputs.use_kpm }}" = "true" ]; then # Explicitly check for string "true"
               echo "CONFIG_KPM=y" >> "$GKI_DEFCONFIG_PATH"
               echo "KPM for SukiSU variant ENABLED as per use_kpm input."
-            else # inputs.use_kpm is "false" or any other string
+            else # inputs.use_kpm is "false" or any other string not "true"
               sed -i '/^CONFIG_KPM=.*$/d' "$GKI_DEFCONFIG_PATH" # Remove any existing CONFIG_KPM line
               echo "CONFIG_KPM=n" >> "$GKI_DEFCONFIG_PATH" # Explicitly set to n
               echo "KPM for SukiSU variant DISABLED as per use_kpm input."
@@ -381,7 +421,7 @@ jobs:
           echo "CONFIG_TCP_CONG_BIC=n" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_TCP_CONG_HTCP=n" >> "$GKI_DEFCONFIG_PATH"
-          
+
           sed -i 's/check_defconfig//' ./common/build.config.gki
 
           echo "CONFIG_KSU_SUSFS=y" >> "$GKI_DEFCONFIG_PATH"
@@ -402,23 +442,30 @@ jobs:
 
       - name: 配置内核名称
         run: |
-          # This logic is kept as you provided
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
-          if [ ! -z "${{ inputs.version }}" ]; then # Ensuring correct expression syntax
-            echo "版本号不为空,设置为: ${{ inputs.version }}"
+
+          if [ ! -z "${{ inputs.version }}" ]; then # Corrected expression syntax
+            echo "版本号不为空"
             sed -i '$s|echo "\$res"|echo "${{ inputs.version }}"|' ./common/scripts/setlocalversion
           else
-            echo "版本号为空, 使用默认setlocalversion行为"
-            sed -i '$s|echo "\$res"|echo "\$res"|' ./common/scripts/setlocalversion # This line seems redundant if default behavior is desired
+            echo "版本号为空"
+            # This line was redundant as it did nothing if version was empty.
+            # sed -i '$s|echo "\$res"|echo "\$res"|' ./common/scripts/setlocalversion 
           fi
+
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sat Apr 20 04:20:00 UTC 2024"}' ./common/scripts/mkcompile_h
-          if [ -f "build/build.sh" ]; then 
+
+          echo "Building the kernel..." # This echo seems misplaced, build is later.
+          if [ -f "build/build.sh" ]; then
             sed -i 's/-dirty//' ./common/scripts/setlocalversion
-          else 
+          else
             sed -i '/^[[:space:]]*"protected_exports_list"[[:space:]]*:[[:space:]]*"android\/abi_gki_protected_exports_aarch64",$/d' ./common/BUILD.bazel
             rm -rf ./common/android/abi_gki_protected_exports_*
             sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl
+            # Original sed -E -i '/^CONFIG_LOCALVERSION=/ s/(.*)"$/\1"/' was likely to clear it.
+            # If you want to append inputs.version, it should be conditional like in the setlocalversion part.
+            # For now, keeping it as per your original logic, which clears it.
             sed -E -i '/^CONFIG_LOCALVERSION=/ s/(.*)"$/\1"/' ./common/arch/arm64/configs/gki_defconfig
           fi
 
@@ -427,56 +474,53 @@ jobs:
         with:
           timeout_minutes: 30
           max_attempts: 3
-          retry_on: timeout
+          retry_on: timeout 
           command: |
             set -e
-            set -x 
+            set -x
             cd "$CONFIG"
-            echo "Building the kernel..."
-            if [ -f "build/build.sh" ]; then 
+            echo "Building the kernel..." # This is a more appropriate place for this echo
+            if [ -f "build/build.sh" ]; then
               LTO=thin SYSTEM_DLKM_RE_SIGN=0 BUILD_SYSTEM_DLKM=0 KMI_SYMBOL_LIST_STRICT_MODE=0 BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC="/usr/bin/ccache clang" || exit 1
-            else 
+            else
               tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
             fi
             ccache --show-stats
-
+            
       - name: 修补 Image 文件 安卓12和安卓13(仅限sukisu)
         if: ${{ inputs.use_kpm == 'true' && inputs.kernelsu_variant == 'SukiSU' && (inputs.android_version == 'android12' || inputs.android_version == 'android13') }} # FIXED
         run: |
-          # This logic is kept as you provided
-          if [ "${{ inputs.kernel_version }}" != "6.6" ]; then 
+          if [ "${{ inputs.kernel_version }}" != "6.6" ]; then
             echo "Patching Image file..."
             cd "$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist"
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch
-            chmod 777 patch
+            chmod 777 patch # Consider chmod +x patch
             ./patch
-            rm -rf Image
+            rm -rf Image # Consider rm -f Image
             mv oImage Image
-            cd ../../../..
+            cd ../../../.. # Back to $GITHUB_WORKSPACE
           fi
 
       - name: 修补 Image 文件 安卓14和安卓15(仅限sukisu)
         if: ${{ inputs.use_kpm == 'true' && inputs.kernelsu_variant == 'SukiSU' && (inputs.android_version == 'android14' || inputs.android_version == 'android15') }} # FIXED
         run: |
-          # This logic is kept as you provided
-          if [ "${{ inputs.kernel_version }}" != "6.6" ]; then 
+          if [ "${{ inputs.kernel_version }}" != "6.6" ]; then
             echo "Patching Image file..."
             cd "$CONFIG/bazel-bin/common/kernel_aarch64/"
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch
-            chmod 777 patch
+            chmod 777 patch # Consider chmod +x patch
             ./patch
-            rm -rf Image
+            rm -rf Image # Consider rm -f Image
             mv oImage Image
-            cd ../../..
+            cd ../../.. # Back to $GITHUB_WORKSPACE
           fi
 
       - name: 创建Bootimgs文件夹并复制镜像 (Android 12/13)
-        # This step and the next one for A14/15 create ./Image.gz using your original method.
-        # If the mkbootimg.py error resurfaces, this is the place to use the corrected gzip command.
         if: ${{ inputs.android_version == 'android12' || inputs.android_version == 'android13' }}
         run: |
-          echo "Changing to configuration directory: $CONFIG..." # This cd doesn't happen here
-          mkdir -p bootimgs # Ensure this directory is created at $GITHUB_WORKSPACE/bootimgs
+          # Keeping your original gzip command as requested
+          echo "Changing to configuration directory: $CONFIG..." # This cd doesn't happen here, script runs from GITHUB_WORKSPACE
+          mkdir -p bootimgs
 
           echo "Creating bootimgs folder and copying images..."
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image ./bootimgs
@@ -484,12 +528,13 @@ jobs:
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image ./
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image.lz4 ./
 
-          # Create gzip of the Image file - Using your original command as requested
-          gzip -n -k -f -9 ./Image > ./Image.gz
+          echo "Creating ./Image.gz from ./Image (in $GITHUB_WORKSPACE)"
+          gzip -n -k -f -9 ./Image > ./Image.gz # Original gzip command
 
       - name: 创建Bootimgs文件夹并复制镜像 (Android 14/15)
         if: ${{ inputs.android_version == 'android14' || inputs.android_version == 'android15' }}
         run: |
+          # Keeping your original gzip command as requested
           echo "Changing to configuration directory: $CONFIG..." # This cd doesn't happen here
           mkdir -p bootimgs
 
@@ -498,41 +543,52 @@ jobs:
           cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image.lz4 ./bootimgs
           cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image ./
           cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image.lz4 ./
-
-          # Create gzip of the Image file - Using your original command as requested
-          gzip -n -k -f -9 ./Image > ./Image.gz
+          
+          echo "Creating ./Image.gz from ./Image (in $GITHUB_WORKSPACE)"
+          gzip -n -k -f -9 ./Image > ./Image.gz # Original gzip command
 
       - name: 创建不同格式的ZIP文件
         run: |
-          # This logic is kept as you provided
+          # Keeping your original logic, ensure files exist at ../ from AnyKernel3
           echo "Creating zip files for all formats..."
           cd ./AnyKernel3
 
-          ZIP_NAME="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
-          echo "Creating zip file: $ZIP_NAME..."
-          mv ../Image ./Image
-          zip -r9 "../$ZIP_NAME" ./* -x ".*" -x "__MACOSX" # Added -x for common junk
-          rm ./Image
+          ZIP_NAME_BASE="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3"
 
-          ZIP_NAME_LZ4="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3-lz4.zip" # Defined variable
-          echo "Creating zip file: $ZIP_NAME_LZ4..." # Used variable
-          mv ../Image.lz4 ./Image.lz4
-          zip -r9 "../$ZIP_NAME_LZ4" ./* -x ".*" -x "__MACOSX"
-          rm ./Image.lz4
+          if [ -f "../Image" ]; then
+            echo "Creating zip file: ${ZIP_NAME_BASE}.zip..."
+            mv ../Image ./Image
+            zip -r9 "../${ZIP_NAME_BASE}.zip" ./* -x ".*" -x "__MACOSX" -x ".DS_Store" # Use -x for junk
+            rm ./Image
+          else
+            echo "Warning: ../Image not found for ${ZIP_NAME_BASE}.zip"
+          fi
 
-          ZIP_NAME_GZ="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3-gz.zip" # Defined variable
-          echo "Creating zip file: $ZIP_NAME_GZ..." # Used variable
-          mv ../Image.gz ./Image.gz
-          zip -r9 "../$ZIP_NAME_GZ" ./* -x ".*" -x "__MACOSX"
-          rm ./Image.gz
-          cd .. # Go back to $GITHUB_WORKSPACE
+          if [ -f "../Image.lz4" ]; then
+            echo "Creating zip file: ${ZIP_NAME_BASE}-lz4.zip..."
+            mv ../Image.lz4 ./Image.lz4
+            zip -r9 "../${ZIP_NAME_BASE}-lz4.zip" ./* -x ".*" -x "__MACOSX" -x ".DS_Store"
+            rm ./Image.lz4
+          else
+            echo "Warning: ../Image.lz4 not found for ${ZIP_NAME_BASE}-lz4.zip"
+          fi
+
+          if [ -f "../Image.gz" ]; then
+            echo "Creating zip file: ${ZIP_NAME_BASE}-gz.zip..."
+            mv ../Image.gz ./Image.gz
+            zip -r9 "../${ZIP_NAME_BASE}-gz.zip" ./* -x ".*" -x "__MACOSX" -x ".DS_Store"
+            rm ./Image.gz
+          else
+            echo "Warning: ../Image.gz not found for ${ZIP_NAME_BASE}-gz.zip"
+          fi
+          cd .. # Back to $GITHUB_WORKSPACE
 
       - name: 运行boot镜像 ${{ inputs.android_version }} 编译脚本 (Android 12)
         if: ${{ inputs.android_version == 'android12' }}
         run: |
-          # This logic is kept as you provided, using your original gzip command within this block
+          # Keeping your original gzip command as requested
           echo "Changing to configuration directory: $CONFIG..." # This cd doesn't happen here
-          cd bootimgs
+          cd bootimgs # Current directory is now bootimgs/
 
           GKI_URL=https://dl.google.com/android/gki/gki-certified-boot-android12-5.10-"${{ inputs.os_patch_level }}"_"${{ inputs.revision }}".zip
           FALLBACK_URL=https://dl.google.com/android/gki/gki-certified-boot-android12-5.10-2023-01_r1.zip
@@ -549,42 +605,55 @@ jobs:
           fi
           
           echo "Unzipping the downloaded kernel..."
-          unzip gki-kernel.zip && rm gki-kernel.zip
+          unzip -o gki-kernel.zip && rm gki-kernel.zip # Added -o to overwrite
 
           echo "Unpacking boot.img..."
-          FULL_PATH=$(pwd)/boot-5.10.img # Assuming this is the correct name from zip
-          echo "Unpacking using: $FULL_PATH"
-          $UNPACK_BOOTIMG --boot_img="$FULL_PATH" --out=out # Added output directory for unpack
+          BASE_BOOT_IMG="boot-5.10.img" # Assuming this name, adjust if necessary
+          if [ ! -f "$BASE_BOOT_IMG" ]; then
+              echo "Warning: $BASE_BOOT_IMG not found. Looking for boot*.img..."
+              BASE_BOOT_IMG_FOUND=$(ls boot*.img 2>/dev/null | head -n 1)
+              if [ -z "$BASE_BOOT_IMG_FOUND" ] || [ ! -f "$BASE_BOOT_IMG_FOUND" ]; then
+                  echo "Error: No boot*.img found after unzipping GKI in $PWD"; ls -la; exit 1;
+              fi
+              BASE_BOOT_IMG="$BASE_BOOT_IMG_FOUND"
+              echo "Using GKI boot image: $BASE_BOOT_IMG"
+          fi
+          mkdir -p out # Ensure 'out' directory exists for unpack_bootimg
+          $UNPACK_BOOTIMG --boot_img="$BASE_BOOT_IMG" --out=out 
 
-          echo "Building Image.gz"
-          gzip -n -k -f -9 ./Image > ./Image.gz # USING YOUR ORIGINAL GZIP COMMAND
+          echo "Building Image.gz from ./Image (in bootimgs/)"
+          gzip -n -k -f -9 ./Image > ./Image.gz # Original gzip command
+
+          RAMDISK_PATH="out/ramdisk" # Relative to current dir (bootimgs)
+          if [ ! -f "$RAMDISK_PATH" ]; then echo "Error: Ramdisk not found at $RAMDISK_PATH"; exit 1; fi
 
           echo "Building boot.img"
-          $MKBOOTIMG --header_version 4 --kernel Image --output boot.img --ramdisk out/ramdisk --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
+          $MKBOOTIMG --header_version 4 --kernel Image --output boot.img --ramdisk "$RAMDISK_PATH" --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
           cp ./boot.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img
 
           echo "Building boot-gz.img"
-          $MKBOOTIMG --header_version 4 --kernel Image.gz --output boot-gz.img --ramdisk out/ramdisk --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
+          $MKBOOTIMG --header_version 4 --kernel Image.gz --output boot-gz.img --ramdisk "$RAMDISK_PATH" --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-gz.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
           cp ./boot-gz.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-gz.img
 
           echo "Building boot-lz4.img"
-          $MKBOOTIMG --header_version 4 --kernel Image.lz4 --output boot-lz4.img --ramdisk out/ramdisk --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
+          $MKBOOTIMG --header_version 4 --kernel Image.lz4 --output boot-lz4.img --ramdisk "$RAMDISK_PATH" --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
           cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
-          cd .. # Go back to $GITHUB_WORKSPACE
+          cd .. # Back to $GITHUB_WORKSPACE
 
       - name: 运行boot镜像 ${{ inputs.android_version }} 编译脚本 (Android 13/14/15)
         if: ${{ inputs.android_version == 'android13' || inputs.android_version == 'android14' || inputs.android_version == 'android15' }}
         run: |
+          # Keeping your original gzip command as requested
           cd bootimgs
 
-          echo "Building Image.gz"
-          gzip -n -k -f -9 ./Image > ./Image.gz # USING YOUR ORIGINAL GZIP COMMAND
+          echo "Building Image.gz from ./Image (in bootimgs/)"
+          gzip -n -k -f -9 ./Image > ./Image.gz # Original gzip command
 
           echo "Building boot.img"
-          $MKBOOTIMG --header_version 4 --kernel Image --output boot.img
+          $MKBOOTIMG --header_version 4 --kernel Image --output boot.img # Assuming no ramdisk needed for these GKI versions
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
           cp ./boot.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img
 
@@ -597,7 +666,7 @@ jobs:
           $MKBOOTIMG --header_version 4 --kernel Image.lz4 --output boot-lz4.img
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
           cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
-          cd .. # Go back to $GITHUB_WORKSPACE
+          cd .. # Back to $GITHUB_WORKSPACE
 
       - name: 上传编译资产
         uses: actions/upload-artifact@v4
@@ -606,4 +675,4 @@ jobs:
           path: |
             *AnyKernel3.zip
             *.img
-          retention-days: 7 # Optional
+          retention-days: 7
