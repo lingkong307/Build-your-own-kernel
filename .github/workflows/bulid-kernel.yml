@@ -62,8 +62,8 @@ jobs:
       kernelsu_branch_default: 'Dev(开发)'
       version_type_default: '随机生成'
       custom_version_suffix_default: ''
-      use_zram_default: 'true'  # 关键修改：布尔值转为字符串
-      use_kpm_default: 'false'   # 关键修改：布尔值转为字符串
+      use_zram_default: 'true'  # 确保字符串类型
+      use_kpm_default: 'false'  # 确保字符串类型
     steps:
       - name: Restore last processed run ID from cache
         id: cache_restore_id
@@ -156,6 +156,6 @@ jobs:
       kernelsu_variant: ${{ github.event_name == 'workflow_dispatch' && inputs.kernelsu_variant || needs.check_external_updates.outputs.kernelsu_variant_default }}
       kernelsu_branch: ${{ github.event_name == 'workflow_dispatch' && inputs.kernelsu_branch || needs.check_external_updates.outputs.kernelsu_branch_default }}
       version: ${{ needs.prepare_version.outputs.version_suffix_value }}
-      # 关键修改：添加toString类型转换
-      use_zram: ${{ ((github.event_name == 'workflow_dispatch' && inputs.use_zram) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_zram_default)) | toString }}
-      use_kpm: ${{ ((github.event_name == 'workflow_dispatch' && inputs.use_kpm) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_kpm_default)) | toString }}
+      # 关键修改：移除表达式括号并修正管道符格式
+      use_zram: ${{ (github.event_name == 'workflow_dispatch' && inputs.use_zram) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_zram_default) | toString }}
+      use_kpm: ${{ (github.event_name == 'workflow_dispatch' && inputs.use_kpm) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_kpm_default) | toString }}
