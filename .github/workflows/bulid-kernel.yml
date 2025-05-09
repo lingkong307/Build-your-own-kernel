@@ -1,11 +1,11 @@
 name: A编译内核
 
-permissions: # 保留您原有的权限设置，确保 API 调用和可能的子工作流程有足够权限
+permissions:
   contents: write
-  actions: write # 'write' 权限包含了 'read'，用于 gh api 读取其他仓库的 actions
+  actions: write
 
 on:
-  workflow_dispatch: # 保留手动触发方式
+  workflow_dispatch:
     inputs:
       kernelsu_variant:
         description: "选择 KernelSU"
@@ -50,7 +50,7 @@ on:
         type: boolean
         default: true
   schedule:
-    - cron: '*/30 * * * *' # 每30分钟运行一次
+    - cron: '*/30 * * * *'
 
 jobs:
   check_external_updates:
@@ -62,24 +62,24 @@ jobs:
       kernelsu_branch_default: 'Dev(开发)'
       version_type_default: '随机生成'
       custom_version_suffix_default: ''
-      use_zram_default: 'true'  # 确保字符串类型
-      use_kpm_default: 'false'  # 确保字符串类型
+      use_zram_default: 'true'  # 关键修改：布尔值转为字符串
+      use_kpm_default: 'false'  # 关键修改：布尔值转为字符串
     steps:
       - name: Restore last processed run ID from cache
         id: cache_restore_id
         uses: actions/cache@v4
         with:
-          path: ./last_processed_sukisu_run_id.txt # 用于存储上次处理的ID的文件
-          key: latest-processed-sukisu-run-id # 固定缓存键
+          path: ./last_processed_sukisu_run_id.txt
+          key: latest-processed-sukisu-run-id
 
       - name: Check for new successful run in ShirkNeko/SukiSU-Ultra
         id: check
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GITHUB_TOKEN 用于API认证
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_REPO: ShirkNeko/SukiSU-Ultra
           TARGET_WORKFLOW_FILE: build-manager.yml
         run: |
-          set -e # 如果命令失败则退出
+          set -e
           echo "Fetching latest successful workflow run for $TARGET_WORKFLOW_FILE from $TARGET_REPO (event: push)"
           API_RESPONSE=$(gh api "repos/$TARGET_REPO/actions/workflows/$TARGET_WORKFLOW_FILE/runs?status=success&event=push&per_page=1")
           LATEST_EXTERNAL_RUN_ID=$(echo "$API_RESPONSE" | jq -r '.workflow_runs[0].id // ""')
@@ -156,6 +156,6 @@ jobs:
       kernelsu_variant: ${{ github.event_name == 'workflow_dispatch' && inputs.kernelsu_variant || needs.check_external_updates.outputs.kernelsu_variant_default }}
       kernelsu_branch: ${{ github.event_name == 'workflow_dispatch' && inputs.kernelsu_branch || needs.check_external_updates.outputs.kernelsu_branch_default }}
       version: ${{ needs.prepare_version.outputs.version_suffix_value }}
-      # 关键修改：移除表达式括号并修正管道符格式
-      use_zram: ${{ (github.event_name == 'workflow_dispatch' && inputs.use_zram) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_zram_default) | toString }}
-      use_kpm: ${{ (github.event_name == 'workflow_dispatch' && inputs.use_kpm) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_kpm_default) | toString }}
+      # 关键修复：调整管道符位置和表达式结构
+      use_zram: ${{ ((github.event_name == 'workflow_dispatch' && inputs.use_zram) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_zram_default)) | toString }}
+      use_kpm: ${{ ((github.event_name == 'workflow_dispatch' && inputs.use_kpm) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_kpm_default)) | toString }}
