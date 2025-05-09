@@ -158,5 +158,5 @@ jobs:
       version: ${{ needs.prepare_version.outputs.version_suffix_value }}
       # --- 关键检查点：确保这两行的结构在您的实际文件中是这样的 ---
       # --- 即，键名 (use_zram:)、冒号、空格、表达式都正确 ---
-      use_zram: ${{ github.event_name == 'workflow_dispatch' && inputs.use_zram || needs.check_external_updates.outputs.use_zram_default }}
-      use_kpm: ${{ github.event_name == 'workflow_dispatch' && inputs.use_kpm || needs.check_external_updates.outputs.use_kpm_default }}
+      use_zram: ${{ (github.event_name == 'workflow_dispatch' && inputs.use_zram) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_zram_default) }}
+      use_kpm: ${{ (github.event_name == 'workflow_dispatch' && inputs.use_kpm) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_kpm_default) }}
