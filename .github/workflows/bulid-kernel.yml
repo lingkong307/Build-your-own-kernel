@@ -27,7 +27,7 @@ on:
           - Other(其他/指定)
         default: Dev(开发)
       version:
-        description: '自定义版本名/版本后缀 (例如 -MySuffix)。如果留空，将生成一个含固定前缀的随机版本号。' # 更新了描述
+        description: '自定义版本后缀，留空随机生成' # 更新了描述
         required: false
         type: string # 用户输入的是字符串
       use_zram:
