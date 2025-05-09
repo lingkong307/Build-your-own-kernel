@@ -157,5 +157,5 @@ jobs:
       kernelsu_branch: ${{ github.event_name == 'workflow_dispatch' && inputs.kernelsu_branch || needs.check_external_updates.outputs.kernelsu_branch_default }}
       version: ${{ needs.prepare_version.outputs.version_suffix_value }}
       # 关键修复：调整管道符位置和表达式结构
-      use_zram: ${{ ((github.event_name == 'workflow_dispatch' && inputs.use_zram) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_zram_default)) | toString }}
-      use_kpm: ${{ ((github.event_name == 'workflow_dispatch' && inputs.use_kpm) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_kpm_default)) | toString }}
+      use_zram: ${{ format('{0}', (github.event_name == 'workflow_dispatch' && inputs.use_zram) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_zram_default == 'true')) }}
+      use_kpm: ${{ format('{0}', (github.event_name == 'workflow_dispatch' && inputs.use_kpm) || (github.event_name == 'schedule' && needs.check_external_updates.outputs.use_kpm_default == 'true')) }}
