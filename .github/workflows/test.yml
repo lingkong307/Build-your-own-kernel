@@ -1,11 +1,9 @@
-name: Test Gist Action Download
+name: Test Other Peter Evans Action
 on: workflow_dispatch
 jobs:
-  test_download_job:
-    runs-on: ubuntu-22.04 # <--- 修改这里，从 ubuntu-latest 改为 ubuntu-22.04
+  test_other_action:
+    runs-on: ubuntu-latest
     steps:
-      - name: Attempt to download peter-evans/gist-action
-        uses: peter-evans/gist-action@v3
-        with:
-          gist_id: 'a0f4a08491267936039c95997f913998'
-      - run: echo "Test action step was reached."
+      - name: Attempt to download peter-evans/create-pull-request
+        uses: peter-evans/create-pull-request@v6
+      - run: echo "Other test action step was reached."
