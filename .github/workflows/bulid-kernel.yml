@@ -107,7 +107,7 @@ jobs:
 
       - name: Update Gist with new SHA
         if: steps.compare.outputs.changed == 'true'
-        uses: peter-evans/gist@v2
+        uses: peter-evans/gist-action@v2
         with:
           gist_id: ${{ secrets.LAST_SHA_GIST_ID }}
           files: |
