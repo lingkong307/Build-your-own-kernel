@@ -89,7 +89,7 @@ jobs:
 
       - name: Read last SHA from Gist
         id: gist-read
-        uses: peter-evans/gist@v2
+        uses: peter-evans/gist-action@v2
         with:
           gist_id: ${{ secrets.LAST_SHA_GIST_ID }}
           file: last_sha.txt
