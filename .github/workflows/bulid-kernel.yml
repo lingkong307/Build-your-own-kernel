@@ -41,7 +41,7 @@ on:
 
   # 定时触发：每小时检查一次
   schedule:
-    - cron: '0 * * * *'
+    - cron: '*/30 * * * *'
 
 permissions:
   contents: read    # 读取本仓库及对方仓库文件元数据
