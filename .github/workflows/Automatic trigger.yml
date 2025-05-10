@@ -45,26 +45,18 @@ jobs:
           # 如果你总是希望在 main 分支上运行目标工作流，就明确指定它
           TARGET_REF="refs/heads/main"
           # 或者，如果你希望在当前此触发工作流运行所在的分支上运行目标工作流:
-          # TARGET_REF="${{ github.ref }}"
+          # TARGET_REF="${{ github.ref }}" # 例如： refs/heads/your-feature-branch
 
-          echo "将在分支 ${TARGET_REF} 上触发目标工作流。"
-          echo "请再次确认目标工作流文件 '.github/workflows/build-kernel.yml' 确实存在于仓库 Celestials316/Build-your-own-kernel 的 ${TARGET_REF} 分支上，并且文件名完全正确。"
+          echo "将在分支 ${TARGET_REF} 上触发名为 'A编译内核' 的工作流。"
+          echo "请确保名为 'A编译内核' (对应文件 build-kernel.yml) 的工作流确实存在于仓库 Celestials316/Build-your-own-kernel 的 ${TARGET_REF} 分支上。"
 
-          # 尝试通过文件名触发
-          # **确保你的仓库中 .github/workflows/ 目录下的文件确实名为 'build-kernel.yml'**
-          echo "尝试通过文件名 'build-kernel.yml' 触发..."
-          if gh workflow run build-kernel.yml --ref ${TARGET_REF}; then
-            echo "已通过文件名 'build-kernel.yml' 发送触发命令。"
+          # 直接通过工作流的 'name' 属性 ("A编译内核") 触发
+          # 这是基于你的反馈，这种方式是有效的。
+          if gh workflow run "A编译内核" --ref ${TARGET_REF}; then
+            echo "已通过工作流名称 'A编译内核' 发送触发命令。"
           else
-            echo "通过文件名 'build-kernel.yml' 触发失败。尝试通过工作流名称 'A编译内核' 触发..."
-            # 如果通过文件名失败，尝试通过工作流的 'name' 属性触发
-            # **确保你的 build-kernel.yml 文件中的 'name' 属性是 "A编译内核"**
-            if gh workflow run "A编译内核" --ref ${TARGET_REF}; then
-              echo "已通过工作流名称 'A编译内核' 发送触发命令。"
-            else
-              echo "通过文件名和工作流名称触发均失败。请检查工作流文件是否存在、名称是否正确，以及 PAT 权限。"
-              exit 1 # 触发失败，退出脚本
-            fi
+            echo "通过工作流名称 'A编译内核' 触发失败。请检查工作流是否存在于目标分支、名称是否完全匹配，以及 PAT 权限。"
+            exit 1 # 触发失败，退出脚本
           fi
 
-          echo "你可以在 Actions 标签页查看目标工作流的运行状态。"
+          echo "你可以在 Actions 标签页查看 'A编译内核' 工作流的运行状态。"
