@@ -89,7 +89,7 @@ jobs:
 
       - name: Read last SHA from Gist
         id: gist-read
-        uses: peter-evans/gist-action@v2
+        uses: peter-evans/gist-action@v2.5.0
         with:
           gist_id: ${{ secrets.LAST_SHA_GIST_ID }}
           file: last_sha.txt
@@ -107,7 +107,7 @@ jobs:
 
       - name: Update Gist with new SHA
         if: steps.compare.outputs.changed == 'true'
-        uses: peter-evans/gist-action@v2
+        uses: peter-evans/gist-action@v2.5.0
         with:
           gist_id: ${{ secrets.LAST_SHA_GIST_ID }}
           files: |
