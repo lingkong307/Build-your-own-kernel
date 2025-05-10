@@ -1,16 +1,11 @@
 name: Test Gist Action Download
-
-on: workflow_dispatch # 允许手动触发
-
+on: workflow_dispatch
 jobs:
   test_download_job:
-    runs-on: ubuntu-latest # 可以尝试 ubuntu-22.04 看看是否有区别
+    runs-on: ubuntu-22.04 # <--- 修改这里，从 ubuntu-latest 改为 ubuntu-22.04
     steps:
       - name: Attempt to download peter-evans/gist-action
         uses: peter-evans/gist-action@v3
         with:
-          # 为了测试下载，可以随便给一个有效的 gist_id 或者你的真实 gist_id
-          gist_id: 'a0f4a08491267936039c95997f913998' # 这是一个公开的测试Gist ID
-          # action: 'read' # 默认就是 read
-        # 这个步骤的目的仅仅是看 action 能否被下载，不关心它是否成功执行逻辑
+          gist_id: 'a0f4a08491267936039c95997f913998'
       - run: echo "Test action step was reached."
