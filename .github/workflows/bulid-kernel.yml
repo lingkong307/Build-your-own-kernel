@@ -78,7 +78,7 @@ jobs:
     steps:
       - name: Fetch remote build-manager.yml metadata
         id: fetch
-        uses: octokit/request-action@v2
+        uses: octokit/request-action@v2.1.0
         with:
           route: GET /repos/ShirkNeko/SukiSU-Ultra/contents/.github/workflows/build-manager.yml
 
