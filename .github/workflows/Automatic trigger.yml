@@ -3,30 +3,33 @@ name: Trigger Kernel Build on SukiSU-Ultra Update or Manual Dispatch
 
 on:
   workflow_run:
-    workflows: ["Build Manager CI/CD"] # 确保这个名称与 ShirkNeko/SukiSU-Ultra 仓库中目标工作流的 'name' 字段完全一致
+    # 监视的外部仓库中的工作流名称
+    # 这个名称来源于 ShirkNeko/SukiSU-Ultra/.github/workflows/build-manager.yml 文件中定义的 'name' 字段
+    workflows: ["Build Manager CI/CD"] # 请确保这个名称与外部工作流的 'name' 完全一致
     repository: ShirkNeko/SukiSU-Ultra
     types:
       - completed
-  workflow_dispatch:
+  workflow_dispatch: # 允许手动触发
 
 jobs:
   trigger_kernel_workflow:
     name: Trigger Local Kernel Build
+    # 条件：仅当此工作流是手动触发的，或者是由外部工作流成功完成后触发的，才运行此作业
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      actions: write # 需要此权限来触发其他工作流
+      contents: read # 检出代码所需
+      actions: write # 触发其他工作流所需
 
     steps:
       - name: Checkout current repository
         uses: actions/checkout@v4
 
-      - name: Trigger build-kernel.yml
+      - name: Trigger target kernel build workflow
         env:
-          GH_TOKEN: ${{ secrets.WORKFLOW_TRIGGER_PAT }} # 确保这个 PAT 有 'workflow' 权限
+          GH_TOKEN: ${{ secrets.WORKFLOW_TRIGGER_PAT }} # 确保 PAT 具有 'workflow' 权限
         run: |
-          # 使用 ${{ github.event_name }} 来获取正确的事件名称
+          # 修正了 if 条件，使用 ${{ github.event_name }}
           if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
             echo "监听到 ShirkNeko/SukiSU-Ultra 仓库的 'Build Manager CI/CD' 工作流成功完成。"
             echo "触发者: ${{ github.event.workflow_run.actor.login }}"
@@ -36,19 +39,32 @@ jobs:
             echo "工作流由 ${{ github.actor }} 手动触发。"
           fi
 
-          echo "正在尝试触发本地的 'build-kernel.yml' 工作流..."
+          echo "正在尝试触发本地的内核构建工作流..."
 
           # 确定目标分支
-          # 对于 workflow_run, github.ref 是此触发工作流所在仓库的默认分支的 ref (例如 refs/heads/main)
-          # 对于 workflow_dispatch, github.ref 是用户选择运行此工作流的分支的 ref
-          TARGET_REF="${{ github.ref }}"
-          echo "将在分支 ${TARGET_REF} 上触发 build-kernel.yml"
+          # 如果你总是希望在 main 分支上运行目标工作流，就明确指定它
+          TARGET_REF="refs/heads/main"
+          # 或者，如果你希望在当前此触发工作流运行所在的分支上运行目标工作流:
+          # TARGET_REF="${{ github.ref }}"
 
-          # 使用 GitHub CLI (gh) 来触发仓库中的 'build-kernel.yml' 工作流
-          # **重要**: 确保你的 Celestials316/Build-your-own-kernel 仓库中
-          # .github/workflows/ 目录下的文件确实名为 'build-kernel.yml' (有 'd')
-          # 并且该文件位于 ${TARGET_REF} 指定的分支上。
-          gh workflow run build-kernel.yml --ref ${TARGET_REF}
+          echo "将在分支 ${TARGET_REF} 上触发目标工作流。"
+          echo "请再次确认目标工作流文件 '.github/workflows/build-kernel.yml' 确实存在于仓库 Celestials316/Build-your-own-kernel 的 ${TARGET_REF} 分支上，并且文件名完全正确。"
 
-          echo "已发送 'build-kernel.yml' 的触发命令。"
-          echo "你可以在 Actions 标签页查看 'build-kernel.yml' 的运行状态。"
+          # 尝试通过文件名触发
+          # **确保你的仓库中 .github/workflows/ 目录下的文件确实名为 'build-kernel.yml'**
+          echo "尝试通过文件名 'build-kernel.yml' 触发..."
+          if gh workflow run build-kernel.yml --ref ${TARGET_REF}; then
+            echo "已通过文件名 'build-kernel.yml' 发送触发命令。"
+          else
+            echo "通过文件名 'build-kernel.yml' 触发失败。尝试通过工作流名称 'A编译内核' 触发..."
+            # 如果通过文件名失败，尝试通过工作流的 'name' 属性触发
+            # **确保你的 build-kernel.yml 文件中的 'name' 属性是 "A编译内核"**
+            if gh workflow run "A编译内核" --ref ${TARGET_REF}; then
+              echo "已通过工作流名称 'A编译内核' 发送触发命令。"
+            else
+              echo "通过文件名和工作流名称触发均失败。请检查工作流文件是否存在、名称是否正确，以及 PAT 权限。"
+              exit 1 # 触发失败，退出脚本
+            fi
+          fi
+
+          echo "你可以在 Actions 标签页查看目标工作流的运行状态。"
