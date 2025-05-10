@@ -1,0 +1,45 @@
+# 文件名: .github/workflows/trigger_on_external_build.yml
+name: Trigger Kernel Build on SukiSU-Ultra Update
+
+on:
+  workflow_run:
+    # 监视的外部仓库中的工作流名称
+    # 这是 ShirkNeko/SukiSU-Ultra/.github/workflows/build-manager.yml 文件中定义的 'name' 字段
+    workflows: ["Build Manager CI/CD"]
+    # 外部仓库的名称
+    repository: ShirkNeko/SukiSU-Ultra
+    # 只在外部工作流完成时触发
+    types:
+      - completed
+
+jobs:
+  trigger_kernel_workflow:
+    name: Trigger Local Kernel Build
+    # 仅当触发此工作流的外部工作流成功完成时才运行
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      # 需要 actions:write 权限来触发另一个工作流 (如果使用 GITHUB_TOKEN 且适用)
+      # 但由于这是由外部仓库触发的，默认 GITHUB_TOKEN 是只读的，所以我们需要 PAT
+      actions: write # 通常不足够，见下方解释
+      contents: read # 用于 checkout
+
+    steps:
+      - name: Checkout current repository
+        uses: actions/checkout@v4
+        # 这个步骤是可选的，但如果 build-kernel.yml 需要仓库的上下文，或者 gh CLI 需要在仓库目录中运行，则建议保留。
+
+      - name: Trigger build-kernel.yml
+        env:
+          # 重要：你需要在这里使用一个 Personal Access Token (PAT)
+          # 因为 GITHUB_TOKEN 在由外部仓库的 workflow_run 触发时是只读的
+          GH_TOKEN: ${{ secrets.WORKFLOW_TRIGGER_PAT }}
+        run: |
+          echo "监听到 ShirkNeko/SukiSU-Ultra 仓库的 'Build Manager CI/CD' 工作流成功完成。"
+          echo "正在尝试触发本地的 'build-kernel.yml' 工作流..."
+          # 使用 GitHub CLI (gh) 来触发你仓库中的 build-kernel.yml
+          # build-kernel.yml 是目标工作流的文件名或其 'name' 属性
+          # --ref 指定在哪个分支/标签/提交上运行 build-kernel.yml
+          # github.event.repository.default_branch 是当前仓库的默认分支
+          gh workflow run build-kernel.yml --ref ${{ github.event.repository.default_branch }}
+          echo "已发送 'build-kernel.yml' 的触发命令。"
