@@ -44,8 +44,9 @@ on:
     - cron: '*/30 * * * *'
 
 permissions:
-  contents: read    # 读取本仓库及对方仓库文件元数据
+  contents: write    # 读取本仓库及对方仓库文件元数据
   actions: write    # 触发下游工作流
+  
 
 jobs:
   prepare_version_string:
