@@ -1,4 +1,3 @@
-# .github/workflows/poll-external-build-manager.yml
 name: A 编译内核
 
 on:
@@ -39,14 +38,14 @@ on:
         type: boolean
         default: true
 
-  # 定时触发：每小时检查一次
+  # 定时触发：每30分钟检查一次
   schedule:
     - cron: '*/30 * * * *'
 
 permissions:
   contents: write    # 读取本仓库及对方仓库文件元数据
-  actions: write    # 触发下游工作流
-  
+  actions: write     # 触发下游工作流
+
 
 jobs:
   prepare_version_string:
@@ -81,49 +80,79 @@ jobs:
         uses: octokit/request-action@v2.1.0
         with:
           route: GET /repos/ShirkNeko/SukiSU-Ultra/contents/.github/workflows/build-manager.yml
+          # 如果目标文件不在默认分支，你可能需要添加 ref 参数，例如：
+          # ref: main
 
       - name: Extract remote SHA
         id: extract
         run: |
           echo "sha=$(echo '${{ steps.fetch.outputs.data }}' | jq -r .sha)" >> "$GITHUB_OUTPUT"
 
-      - name: Read last SHA from Gist
-        id: gist-read
-        uses: peter-evans/gist-action@v2.5.0
+      # 修改点 1: 将 peter-evans/gist-action 版本改为 @v3
+      # 修改点 2: 调整了步骤名称和 with 参数，以正确反映其功能（克隆Gist）
+      - name: Setup Gist Read (Clones Gist)
+        id: gist-read-setup
+        uses: peter-evans/gist-action@v3
         with:
           gist_id: ${{ secrets.LAST_SHA_GIST_ID }}
-          file: last_sha.txt
+          # 'file: last_sha.txt' 已移除，因为它不用于此action的读取操作
+          # 此action会将Gist克隆到以Gist ID命名的目录中
 
+      # 修改点 3: 新增步骤，从克隆的Gist目录中读取文件内容
+      - name: Get Gist content from file
+        id: gist-content
+        run: |
+          GIST_DIR_NAME="${{ secrets.LAST_SHA_GIST_ID }}" # Gist内容会被克隆到以此ID命名的目录
+          FILE_PATH="${GIST_DIR_NAME}/last_sha.txt"
+          if [[ -f "$FILE_PATH" ]]; then
+            PREV_SHA_CONTENT=$(cat "$FILE_PATH" | tr -d '[:space:]')
+            echo "previous_sha=${PREV_SHA_CONTENT}" >> "$GITHUB_OUTPUT"
+            echo "Read SHA from Gist file: ${PREV_SHA_CONTENT}"
+          else
+            echo "File last_sha.txt not found in Gist directory '$GIST_DIR_NAME'."
+            echo "This might be the first run, Gist ID is incorrect, or Gist is empty."
+            echo "Assuming no previous SHA."
+            echo "previous_sha=" >> "$GITHUB_OUTPUT" # 如果文件不存在，输出空字符串
+          fi
+
+      # 修改点 4: 更新比较逻辑，使用上一步 'gist-content' 的输出
       - name: Compare SHAs
         id: compare
         run: |
-          PREV=$(echo '${{ steps.gist-read.outputs.content }}' | tr -d '[:space:]')
-          CURR=${{ steps.extract.outputs.sha }}
-          if [[ "$PREV" != "$CURR" ]]; then
+          PREV='${{ steps.gist-content.outputs.previous_sha }}'
+          CURR='${{ steps.extract.outputs.sha }}'
+          echo "Previous SHA (from Gist): '$PREV'"
+          echo "Current SHA (from remote): '$CURR'"
+          # 如果PREV为空 (例如首次运行，Gist中无此文件) 或 PREV不等于CURR，则视为有变化
+          if [[ -z "$PREV" || "$PREV" != "$CURR" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "SHAs are different or previous SHA was empty. Marking as changed."
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "SHAs are the same. No changes detected."
           fi
 
+      # 修改点 5: 将 peter-evans/gist-action 版本改为 @v3
       - name: Update Gist with new SHA
         if: steps.compare.outputs.changed == 'true'
-        uses: peter-evans/gist-action@v2.5.0
+        uses: peter-evans/gist-action@v3
         with:
           gist_id: ${{ secrets.LAST_SHA_GIST_ID }}
-          files: |
+          files: | # 使用此多行字符串格式来指定文件名和内容
             last_sha.txt: ${{ steps.extract.outputs.sha }}
 
   build-on-update:
     needs:
       - prepare_version_string
       - check-external-file
+    # 如果 check-external-file.outputs.changed 为 true，则运行此作业
     if: needs.check-external-file.outputs.changed == 'true'
-    uses: ./.github/workflows/kernel-a14-6.1.yml
-    secrets: inherit
+    uses: ./.github/workflows/kernel-a14-6.1.yml # 调用本地可复用工作流
+    secrets: inherit # 继承父工作流的secrets
     with:
-      make_release: false
+      make_release: false # 假设这是可复用工作流的一个输入
       kernelsu_variant: ${{ github.event.inputs.kernelsu_variant || 'SukiSU' }}
       kernelsu_branch:  ${{ github.event.inputs.kernelsu_branch  || 'Dev(开发)' }}
-      version:         ${{ needs.prepare_version_string.outputs.final_version }}
-      use_zram:        ${{ github.event.inputs.use_zram           || true }}
-      use_kpm:         ${{ github.event.inputs.use_kpm            || true }}
+      version:          ${{ needs.prepare_version_string.outputs.final_version }}
+      use_zram:         ${{ github.event.inputs.use_zram           || true }}
+      use_kpm:          ${{ github.event.inputs.use_kpm            || true }}
