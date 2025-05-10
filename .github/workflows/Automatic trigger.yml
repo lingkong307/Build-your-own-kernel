@@ -2,51 +2,31 @@
 name: Trigger Kernel Build on SukiSU-Ultra Update or Manual Dispatch
 
 on:
-  # 1. 当 ShirkNeko/SukiSU-Ultra 仓库的 "Build Manager CI/CD" 工作流成功完成时触发
   workflow_run:
-    # 监视的外部仓库中的工作流名称
-    # 这个名称来源于 ShirkNeko/SukiSU-Ultra/.github/workflows/build-manager.yml 文件中定义的 'name' 字段
     workflows: ["Build Manager CI/CD"]
-    # 外部仓库的名称
     repository: ShirkNeko/SukiSU-Ultra
-    # 只在外部工作流完成时触发
     types:
       - completed
-
-  # 2. 允许通过 GitHub UI 手动触发此工作流
   workflow_dispatch:
 
 jobs:
   trigger_kernel_workflow:
     name: Trigger Local Kernel Build
-
-    # 条件：仅当此工作流是手动触发的，或者是由外部工作流成功完成后触发的，才运行此作业
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
-
-    runs-on: ubuntu-latest # 使用最新的 Ubuntu 运行器
-
+    runs-on: ubuntu-latest
     permissions:
-      # contents: read 是检出代码所必需的
       contents: read
-      # actions: write 是为了能够使用 gh workflow run 触发另一个工作流
-      # 注意：对于由 workflow_run 触发的情况，默认的 GITHUB_TOKEN 权限受限，
-      # 因此需要使用具有 'workflow' 范围的 PAT (Personal Access Token)。
-      actions: write
+      actions: write # 需要此权限来触发其他工作流
 
     steps:
-      # 步骤 1: 检出当前仓库的代码
-      # 这使得后续步骤（如 gh CLI）可以在仓库的上下文中操作。
       - name: Checkout current repository
         uses: actions/checkout@v4
 
-      # 步骤 2: 触发本地的 build-kernel.yml 工作流
       - name: Trigger build-kernel.yml
         env:
-          # GH_TOKEN 环境变量设置为仓库的 Secret
-          # 这个 Secret (WORKFLOW_TRIGGER_PAT) 应该存储一个具有 'workflow' 权限的 PAT
-          GH_TOKEN: ${{ secrets.WORKFLOW_TRIGGER_PAT }}
+          GH_TOKEN: ${{ secrets.WORKFLOW_TRIGGER_PAT }} # 确保这个 PAT 有 workflow 权限
         run: |
-          # 根据触发事件的类型输出不同的日志信息
+          # 使用 ${{ github.event_name }} 来获取正确的事件名称
           if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
             echo "监听到 ShirkNeko/SukiSU-Ultra 仓库的 'Build Manager CI/CD' 工作流成功完成。"
             echo "触发者: ${{ github.event.workflow_run.actor.login }}"
@@ -58,12 +38,24 @@ jobs:
 
           echo "正在尝试触发本地的 'build-kernel.yml' 工作流..."
 
+          # 检查目标工作流文件是否存在 (可选的调试步骤)
+          # echo "检查目标工作流文件在 ${{ github.ref }} 分支上的路径: .github/workflows/build-kernel.yml"
+          # 如果你的 build-kernel.yml 不在 ${{ github.ref }} 指定的分支，你需要修改 --ref 参数
+          # 例如，如果 build-kernel.yml 总是在 main 分支:
+          # TARGET_REF="main"
+          # 或者，如果你想使用当前此工作流运行所在的分支:
+          TARGET_REF="${{ github.ref }}"
+
+          echo "将在分支 ${TARGET_REF} 上触发 build-kernel.yml"
+
           # 使用 GitHub CLI (gh) 来触发仓库中的 'build-kernel.yml' 工作流
-          # 'build-kernel.yml' 是目标工作流的文件名。
-          # '--ref ${{ github.ref }}' 指定在当前工作流运行所在的分支/标签上运行目标工作流。
-          # 对于 workflow_run 事件，github.ref 是此触发工作流所在仓库的默认分支的 ref。
-          # 对于 workflow_dispatch 事件，github.ref 是用户选择运行此工作流的分支的 ref。
-          gh workflow run build-kernel.yml --ref ${{ github.ref }}
+          # 确保 'build-kernel.yml' 文件确实存在于你仓库的 .github/workflows/ 目录下，
+          # 并且位于你通过 --ref 指定的分支上。
+          # 如果 build-kernel.yml 有一个 'name' 属性，你也可以使用那个名称。
+          gh workflow run build-kernel.yml --ref ${TARGET_REF}
+
+          # 如果上面的命令因为权限问题失败（即使有 PAT），并且 build-kernel.yml 在同一个仓库，
+          # 你可以尝试使用 API 调用，但这更复杂。gh CLI 通常是首选。
 
           echo "已发送 'build-kernel.yml' 的触发命令。"
           echo "你可以在 Actions 标签页查看 'build-kernel.yml' 的运行状态。"
