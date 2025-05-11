@@ -1,14 +1,13 @@
-# 文件名: .github/workflows/trigger_on_external_build.yml
 name: Trigger Kernel Build (Manual or Auto)
 
 on:
-  # 1. 自动触发：当 ShirkNeko/SukiSU-Ultra 仓库的 "Build Manager" 工作流成功完成时
+  # 1. 自动触发：当 ShirkNeko/SukiSU-Ultra 仓库的 "Build Manager" 工作流完成时 (无论成功与否)
   workflow_run:
     # 确保此名称与 ShirkNeko/SukiSU-Ultra/.github/workflows/build-manager.yml 中定义的 'name' 完全匹配
     workflows: ["Build Manager"]
     repository: ShirkNeko/SukiSU-Ultra
     types:
-      - completed
+      - completed # 仅在工作流完成时触发
 
   # 2. 手动触发
   workflow_dispatch:
@@ -30,15 +29,15 @@ jobs:
   trigger_kernel_workflow:
     name: Trigger Local Kernel Build
 
-    # 只有手动触发或外部 "Build Manager" 工作流成功时触发
-    if: |
-      github.event_name == 'workflow_dispatch' || 
-      (github.event_name == 'workflow_run' && github.event.workflow_run.workflow_name == 'Build Manager' && github.event.workflow_run.conclusion == 'success')
+    # 条件：当通过手动调度(workflow_dispatch)触发，
+    # 或当由上方 on: 定义的 workflow_run 事件 (即 "Build Manager" 完成) 触发时运行。
+    # 由于 on.workflow_run 已经按名称 ("Build Manager") 过滤，此处无需重复检查 workflow_name。
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run'
 
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      actions: write
+      contents: read    # 需要读取仓库内容 (例如 checkout)
+      actions: write   # 需要权限来触发其他工作流 (gh workflow run)
 
     steps:
       - name: Checkout current repository
@@ -46,17 +45,18 @@ jobs:
 
       - name: Process trigger and dispatch kernel build
         env:
-          GH_TOKEN: ${{ secrets.WORKFLOW_TRIGGER_PAT }}
+          GH_TOKEN: ${{ secrets.WORKFLOW_TRIGGER_PAT }} # 使用PAT来确保有足够权限触发其他工作流
         run: |
-          set -euo pipefail
+          set -euo pipefail # 脚本出错时立即退出，未定义变量视为错误，管道命令中任一失败则整个管道失败
 
           TRIGGER_TYPE=""
-          SIMULATING_EXTERNAL_SUCCESS=false
+          # SIMULATING_EXTERNAL_SUCCESS=false # 此变量在当前脚本逻辑中未被进一步使用，可以移除或保留用于未来扩展
 
-          # 1. 判断触发事件类型
+          # 1. 判断触发事件类型并记录信息
           if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
             TRIGGER_TYPE="真实外部触发"
-            echo "${TRIGGER_TYPE}: 监听到 ShirkNeko/SukiSU-Ultra 仓库的 'Build Manager' 工作流成功完成。"
+            TRIGGERING_WORKFLOW_CONCLUSION="${{ github.event.workflow_run.conclusion }}" # 获取触发工作流的实际完成状态
+            echo "${TRIGGER_TYPE}: 监听到 ShirkNeko/SukiSU-Ultra 仓库的 'Build Manager' 工作流已完成，状态: ${TRIGGERING_WORKFLOW_CONCLUSION}."
             echo "  触发者 (外部): ${{ github.event.workflow_run.actor.login }}"
             echo "  外部工作流运行 ID: ${{ github.event.workflow_run.id }}"
             echo "  外部工作流提交 SHA: ${{ github.event.workflow_run.head_sha }}"
@@ -64,20 +64,16 @@ jobs:
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             if [[ "${{ github.event.inputs.simulation_mode }}" == "simulate_successful_external_trigger" ]]; then
               TRIGGER_TYPE="模拟外部成功触发"
-              SIMULATING_EXTERNAL_SUCCESS=true
+              # SIMULATING_EXTERNAL_SUCCESS=true
               echo "${TRIGGER_TYPE}: 由 ${{ github.actor }} 手动触发，并模拟外部工作流成功场景。"
             else
               TRIGGER_TYPE="标准手动触发"
               echo "${TRIGGER_TYPE}: 由 ${{ github.actor }} 手动触发。"
             fi
-
             echo "  手动输入 simulation_mode: ${{ github.event.inputs.simulation_mode }}"
-
-            # 显示分支覆盖输入（为空时不显示）
             if [[ -n "${{ github.event.inputs.target_branch_override }}" ]]; then
               echo "  手动输入 target_branch_override: ${{ github.event.inputs.target_branch_override }}"
             fi
-
           else
             echo "错误：未知的触发类型: ${{ github.event_name }}"
             exit 1
@@ -88,38 +84,41 @@ jobs:
 
           TARGET_REF=""
 
-          # 分支选择逻辑
+          # 2. 分支选择逻辑
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             if [[ -n "${{ github.event.inputs.target_branch_override }}" ]]; then
               TARGET_REF="refs/heads/${{ github.event.inputs.target_branch_override }}"
               echo "使用手动覆盖的目标分支: ${TARGET_REF}"
             else
-              TARGET_REF="${{ github.ref }}"
+              TARGET_REF="${{ github.ref }}" # github.ref 是当前 workflow 运行所在的分支或标签
               echo "手动触发，未指定分支时使用当前上下文分支/标签: ${TARGET_REF}"
             fi
-
           elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            # 对于外部工作流触发，默认在当前仓库的 main 分支上触发目标工作流
+            # 如果您希望使用来自 github.event.workflow_run 的分支信息，需要确保该信息可用且符合您的逻辑
             TARGET_REF="refs/heads/main"
-            echo "真实或模拟外部触发，默认使用目标分支 'main': ${TARGET_REF}"
-
+            echo "真实外部触发（或模拟外部触发），默认使用目标分支 'main': ${TARGET_REF}"
           else
+            # 此处理论上不会到达，因为 job 的 if 条件已经限制了 event_name
             echo "错误：未知触发来源，无法确定目标分支。"
             exit 1
           fi
 
           echo ""
           echo "最终将在分支/标签 ${TARGET_REF} 上触发名为 'A编译内核' 的工作流。"
-          echo "请确保工作流 'A编译内核' （build-kernel.yml）存在于目标仓库和对应分支中。"
+          echo "请确保工作流 'A编译内核' (例如定义在 build-kernel.yml 或类似文件中) 存在于目标仓库和对应分支 (${TARGET_REF}) 中，并且配置了 'workflow_dispatch' 触发器。"
 
-          # 触发目标工作流
+          # 3. 触发目标工作流 "A编译内核"
+          # 注意：目标工作流 "A编译内核" 必须配置 on: workflow_dispatch: 才能被此方式触发。
           if gh workflow run "A编译内核" --ref "${TARGET_REF}"; then
             echo "已成功发送触发命令给 'A编译内核' 工作流。"
           else
             echo "错误：发送触发命令给 'A编译内核' 工作流失败。"
             echo "请检查以下内容："
-            echo "1. 目标工作流名称 'A编译内核' 是否正确拼写。"
-            echo "2. 目标分支/标签 ${TARGET_REF} 是否存在该工作流。"
-            echo "3. PAT (WORKFLOW_TRIGGER_PAT) 是否有足够权限执行触发。"
+            echo "1. 目标工作流名称 'A编译内核' 是否在其 .yml 文件中正确定义 (name: A编译内核)。"
+            echo "2. 目标工作流的 .yml 文件是否存在于分支/标签 '${TARGET_REF}' 中。"
+            echo "3. 目标工作流 'A编译内核' 是否配置了 'on: workflow_dispatch:' 触发器。"
+            echo "4. PAT (WORKFLOW_TRIGGER_PAT) 是否有效且具有足够的权限 (通常需要 'repo' scope)。"
             exit 1
           fi
 
