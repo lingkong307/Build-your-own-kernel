@@ -104,11 +104,11 @@ jobs:
             fi
             echo "${version_name}=${version_to_use}" >> "$GITHUB_OUTPUT"
           }
-          generate_version "-android12-5" "version_a12_510"
-          generate_version "-android13-6" "version_a13_510"
+          generate_version "-android12-9" "version_a12_510"
+          generate_version "-android13-9" "version_a13_510"
           generate_version "-android13-8" "version_a13_515"
           generate_version "-android14-11" "version_a14_61"
-          generate_version "-android15-13" "version_a15_66"
+          generate_version "-android15-8" "version_a15_66"
 
   # --- 调试输入的作业 (可选，可以保留或移除) ---
   debug_inputs:
