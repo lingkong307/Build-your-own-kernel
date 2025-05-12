@@ -1,4 +1,4 @@
-name: A编译内核 (多版本支持 - 增加调试)
+name: A编译内核 (多版本支持 - 修改 if 条件)
 
 permissions:
   contents: write
@@ -94,33 +94,28 @@ jobs:
             local version_to_use=""
 
             if [[ -n "$USER_PROVIDED_VERSION" ]]; then
-              echo "使用用户提供的版本字符串: $USER_PROVIDED_VERSION (用于 $version_name)"
+              # echo "使用用户提供的版本字符串: $USER_PROVIDED_VERSION (用于 $version_name)"
               version_to_use="$USER_PROVIDED_VERSION"
             else
-              echo "未提供版本字符串，为 $version_name 生成随机版本字符串 (基础: $fixed_part)..."
+              # echo "未提供版本字符串，为 $version_name 生成随机版本字符串 (基础: $fixed_part)..."
               local prefix1="gd"
               local prefix2="ab"
               local random_hex=$(head /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 11 || true)
               local random_digits=$(head /dev/urandom | LC_ALL=C tr -dc '0-9' | head -c 8 || true)
               version_to_use="${fixed_part}-${prefix1}${random_hex}-${prefix2}${random_digits}"
-              # echo "生成的随机版本字符串: $version_to_use" # 在上一个日志中已确认此部分工作正常，可以注释掉减少干扰
             fi
-            # 设置 GitHub Actions 输出变量
             echo "${version_name}=${version_to_use}" >> "$GITHUB_OUTPUT"
           }
-
-          # 为每个内核版本调用生成函数
           generate_version "-android12-5" "version_a12_510"
           generate_version "-android13-6" "version_a13_510"
           generate_version "-android13-8" "version_a13_515"
           generate_version "-android14-11" "version_a14_61"
           generate_version "-android15-13" "version_a15_66"
 
-  # --- 新增：调试输入的作业 ---
+  # --- 调试输入的作业 (可以暂时保留) ---
   debug_inputs:
     name: 调试输入值
     runs-on: ubuntu-latest
-    # 依赖 prepare_versions 完成，确保在构建前运行
     needs: [prepare_versions]
     steps:
       - name: 打印输入的布尔值
@@ -129,7 +124,7 @@ jobs:
           echo "Input build_a12_510: '${{ github.event.inputs.build_a12_510 }}'"
           echo "Input build_a13_510: '${{ github.event.inputs.build_a13_510 }}'"
           echo "Input build_a13_515: '${{ github.event.inputs.build_a13_515 }}'"
-          echo "Input build_a14_61: '${{ github.event.inputs.build_a14_61 }}'" # 特别关注这个，默认是 true
+          echo "Input build_a14_61: '${{ github.event.inputs.build_a14_61 }}'"
           echo "Input build_a15_66: '${{ github.event.inputs.build_a15_66 }}'"
           echo "---------------------------"
           echo "Input version (custom suffix): '${{ github.event.inputs.version }}'"
@@ -137,9 +132,9 @@ jobs:
   # --- 调用 A12 5.10 可重用工作流 ---
   build_a12_510:
     name: Build Kernel A12 5.10
-    # 修改 needs: 依赖 prepare_versions 和 debug_inputs
     needs: [prepare_versions, debug_inputs]
-    if: github.event.inputs.build_a12_510 == true
+    # 修改 if 条件: 直接使用布尔值
+    if: github.event.inputs.build_a12_510
     uses: ./.github/workflows/kernel-a12-5.10.yml
     secrets: inherit
     with:
@@ -153,9 +148,9 @@ jobs:
   # --- 调用 A13 5.10 可重用工作流 ---
   build_a13_510:
     name: Build Kernel A13 5.10
-    # 修改 needs:
     needs: [prepare_versions, debug_inputs]
-    if: github.event.inputs.build_a13_510 == true
+    # 修改 if 条件:
+    if: github.event.inputs.build_a13_510
     uses: ./.github/workflows/kernel-a13-5.10.yml
     secrets: inherit
     with:
@@ -169,9 +164,9 @@ jobs:
   # --- 调用 A13 5.15 可重用工作流 ---
   build_a13_515:
     name: Build Kernel A13 5.15
-    # 修改 needs:
     needs: [prepare_versions, debug_inputs]
-    if: github.event.inputs.build_a13_515 == true
+    # 修改 if 条件:
+    if: github.event.inputs.build_a13_515
     uses: ./.github/workflows/kernel-a13-5.15.yml
     secrets: inherit
     with:
@@ -185,10 +180,9 @@ jobs:
   # --- 调用 A14 6.1 可重用工作流 ---
   build_a14_61:
     name: Build Kernel A14 6.1
-    # 修改 needs:
     needs: [prepare_versions, debug_inputs]
-    # 保持这个 if 条件，理论上默认应为 true
-    if: github.event.inputs.build_a14_61 == true
+    # 修改 if 条件:
+    if: github.event.inputs.build_a14_61
     uses: ./.github/workflows/kernel-a14-6.1.yml
     secrets: inherit
     with:
@@ -202,9 +196,9 @@ jobs:
   # --- 调用 A15 6.6 可重用工作流 ---
   build_a15_66:
     name: Build Kernel A15 6.6
-    # 修改 needs:
     needs: [prepare_versions, debug_inputs]
-    if: github.event.inputs.build_a15_66 == true
+    # 修改 if 条件:
+    if: github.event.inputs.build_a15_66
     uses: ./.github/workflows/kernel-a15-6.6.yml
     secrets: inherit
     with:
