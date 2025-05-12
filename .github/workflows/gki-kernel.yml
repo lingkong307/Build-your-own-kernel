@@ -528,26 +528,6 @@ jobs:
           echo "gki_defconfig has been normalized by savedefconfig."
           cd ../.. # 返回工作区根目录 (GITHUB_WORKSPACE)
 
-      - name: 清理和规范化 gki_defconfig (Bazel 构建前)
-        # 这个步骤只针对 Bazel 构建 (通常是 Android 14+)
-        if: ${{ !(inputs.android_version == 'android12' || inputs.android_version == 'android13') }}
-        run: |
-          echo "Normalizing gki_defconfig for Bazel build..."
-          cd "$CONFIG/common"
-          # 1. 基于当前的 gki_defconfig 和标准片段生成一个完整的 .config
-          #    注意：这里的路径和片段可能需要根据您GKI版本微调，但思路是生成当前配置状态
-          LTO=thin BUILD_CONFIG=build.config.gki.aarch64 scripts/kconfig/merge_config.sh -m arch/arm64/configs/gki_defconfig arch/arm64/configs/gki_kuser.defconfig android/kernel_debug.config android/kasan.config android/gki_hardening.config
-
-          # 2. 基于生成的 .config，用 savedefconfig 生成一个干净的、最小化的 defconfig
-          #    并用它覆盖原始的 gki_defconfig 文件，以通过 Bazel 的检查
-          #    make O=./out ARCH=arm64 savedefconfig # 旧版Make的用法
-          #    对于GKI，直接在当前目录生成.config后，savedefconfig会输出到./defconfig
-          make savedefconfig
-          cp defconfig arch/arm64/configs/gki_defconfig
-
-          echo "gki_defconfig has been normalized by savedefconfig."
-          cd ../.. # 返回工作区根目录
-
       - name: Build with retry
         uses: nick-fields/retry@v3
         with:
