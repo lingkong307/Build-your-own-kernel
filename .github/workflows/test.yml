@@ -1,0 +1,267 @@
+name: A编译内核 (多版本支持)
+
+permissions:
+  contents: write
+  actions: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      # 内核版本选择 (独立开关)
+      build_a12_510:
+        description: "编译 Android 12 (5.10) 内核?"
+        required: true
+        type: boolean
+        default: false
+      build_a13_510:
+        description: "编译 Android 13 (5.10) 内核?"
+        required: true
+        type: boolean
+        default: false
+      build_a13_515:
+        description: "编译 Android 13 (5.15) 内核?"
+        required: true
+        type: boolean
+        default: false
+      build_a14_61:
+        description: "编译 Android 14 (6.1) 内核?"
+        required: true
+        type: boolean
+        default: true # 默认编译 A14
+      build_a15_66:
+        description: "编译 Android 15 (6.6) 内核?"
+        required: true
+        type: boolean
+        default: false
+
+      # KernelSU 选项
+      kernelsu_variant:
+        description: "选择 KernelSU 变体"
+        required: true
+        type: choice
+        options:
+          - Official
+          - Next
+          - MKSU
+          - SukiSU
+        default: SukiSU
+      kernelsu_branch:
+        description: "选择 KSU 分支"
+        required: true
+        type: choice
+        options:
+          - Stable(标准)
+          - Dev(开发)
+          - Other(其他/指定)
+        default: Dev(开发)
+
+      # 自定义选项
+      version: # 保留原始名称 version
+        description: '自定义内核版本后缀 (留空则随机生成，应用于所有选定内核)'
+        required: false
+        type: string # 用户输入的是字符串
+      use_zram:
+        description: '是否开启增加更多ZRAM算法?'
+        required: true
+        type: boolean # 输入是布尔型
+        default: true
+      use_kpm:
+        description: '是否开启KPM功能?'
+        required: true
+        type: boolean # 输入是布尔型
+        default: true
+
+jobs:
+  # --- 编译 Android 12 (5.10) 的作业 ---
+  build_a12_510:
+    name: Build Kernel A12 5.10
+    # 仅当用户勾选了 build_a12_510 时运行
+    if: github.event.inputs.build_a12_510 == true
+    runs-on: ubuntu-latest # 需要运行环境来生成版本号
+    steps:
+      - name: 为 A12 5.10 生成版本字符串
+        id: generate_version_a12_510
+        env:
+          # 从 workflow_dispatch 的 inputs 中获取用户输入的 version
+          USER_PROVIDED_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          VERSION_TO_USE=""
+          FIXED_PART="-android12-5" # <--- A12 5.10 的固定部分
+          if [[ -n "$USER_PROVIDED_VERSION" ]]; then
+            echo "使用用户提供的版本字符串: $USER_PROVIDED_VERSION"
+            VERSION_TO_USE="$USER_PROVIDED_VERSION"
+          else
+            echo "未提供版本字符串，为 A12 5.10 生成随机版本字符串..."
+            PREFIX1="gd"
+            PREFIX2="ab"
+            RANDOM_HEX=$(head /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 11 || true)
+            RANDOM_DIGITS=$(head /dev/urandom | LC_ALL=C tr -dc '0-9' | head -c 8 || true)
+            VERSION_TO_USE="${FIXED_PART}-${PREFIX1}${RANDOM_HEX}-${PREFIX2}${RANDOM_DIGITS}"
+            echo "生成的随机版本字符串: $VERSION_TO_USE"
+          fi
+          # 将最终确定的版本字符串输出，供后续步骤使用
+          echo "version_string=${VERSION_TO_USE}" >> "$GITHUB_OUTPUT"
+
+      - name: 运行 A12 5.10 构建工作流
+        uses: ./.github/workflows/kernel-a12-5.10.yml
+        secrets: inherit
+        with:
+          make_release: false # 根据需要可以动态设置
+          kernelsu_variant: ${{ inputs.kernelsu_variant }}
+          kernelsu_branch: ${{ inputs.kernelsu_branch }}
+          # 这里传递的参数名必须是 'version'，以匹配下层工作流的输入定义
+          version: ${{ steps.generate_version_a12_510.outputs.version_string }}
+          use_zram: ${{ inputs.use_zram }}
+          use_kpm: ${{ inputs.use_kpm }}
+
+  # --- 编译 Android 13 (5.10) 的作业 ---
+  build_a13_510:
+    name: Build Kernel A13 5.10
+    if: github.event.inputs.build_a13_510 == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: 为 A13 5.10 生成版本字符串
+        id: generate_version_a13_510
+        env:
+          USER_PROVIDED_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          VERSION_TO_USE=""
+          FIXED_PART="-android13-6" # <--- A13 5.10 的固定部分
+          if [[ -n "$USER_PROVIDED_VERSION" ]]; then
+            echo "使用用户提供的版本字符串: $USER_PROVIDED_VERSION"
+            VERSION_TO_USE="$USER_PROVIDED_VERSION"
+          else
+            echo "未提供版本字符串，为 A13 5.10 生成随机版本字符串..."
+            PREFIX1="gd"
+            PREFIX2="ab"
+            RANDOM_HEX=$(head /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 11 || true)
+            RANDOM_DIGITS=$(head /dev/urandom | LC_ALL=C tr -dc '0-9' | head -c 8 || true)
+            VERSION_TO_USE="${FIXED_PART}-${PREFIX1}${RANDOM_HEX}-${PREFIX2}${RANDOM_DIGITS}"
+            echo "生成的随机版本字符串: $VERSION_TO_USE"
+          fi
+          echo "version_string=${VERSION_TO_USE}" >> "$GITHUB_OUTPUT"
+
+      - name: 运行 A13 5.10 构建工作流
+        uses: ./.github/workflows/kernel-a13-5.10.yml
+        secrets: inherit
+        with:
+          make_release: false
+          kernelsu_variant: ${{ inputs.kernelsu_variant }}
+          kernelsu_branch: ${{ inputs.kernelsu_branch }}
+          version: ${{ steps.generate_version_a13_510.outputs.version_string }} # 传递参数名为 version
+          use_zram: ${{ inputs.use_zram }}
+          use_kpm: ${{ inputs.use_kpm }}
+
+  # --- 编译 Android 13 (5.15) 的作业 ---
+  build_a13_515:
+    name: Build Kernel A13 5.15
+    if: github.event.inputs.build_a13_515 == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: 为 A13 5.15 生成版本字符串
+        id: generate_version_a13_515
+        env:
+          USER_PROVIDED_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          VERSION_TO_USE=""
+          FIXED_PART="-android13-8" # <--- A13 5.15 的固定部分
+          if [[ -n "$USER_PROVIDED_VERSION" ]]; then
+            echo "使用用户提供的版本字符串: $USER_PROVIDED_VERSION"
+            VERSION_TO_USE="$USER_PROVIDED_VERSION"
+          else
+            echo "未提供版本字符串，为 A13 5.15 生成随机版本字符串..."
+            PREFIX1="gd"
+            PREFIX2="ab"
+            RANDOM_HEX=$(head /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 11 || true)
+            RANDOM_DIGITS=$(head /dev/urandom | LC_ALL=C tr -dc '0-9' | head -c 8 || true)
+            VERSION_TO_USE="${FIXED_PART}-${PREFIX1}${RANDOM_HEX}-${PREFIX2}${RANDOM_DIGITS}"
+            echo "生成的随机版本字符串: $VERSION_TO_USE"
+          fi
+          echo "version_string=${VERSION_TO_USE}" >> "$GITHUB_OUTPUT"
+
+      - name: 运行 A13 5.15 构建工作流
+        uses: ./.github/workflows/kernel-a13-5.15.yml
+        secrets: inherit
+        with:
+          make_release: false
+          kernelsu_variant: ${{ inputs.kernelsu_variant }}
+          kernelsu_branch: ${{ inputs.kernelsu_branch }}
+          version: ${{ steps.generate_version_a13_515.outputs.version_string }} # 传递参数名为 version
+          use_zram: ${{ inputs.use_zram }}
+          use_kpm: ${{ inputs.use_kpm }}
+
+  # --- 编译 Android 14 (6.1) 的作业 ---
+  build_a14_61:
+    name: Build Kernel A14 6.1
+    if: github.event.inputs.build_a14_61 == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: 为 A14 6.1 生成版本字符串
+        id: generate_version_a14_61
+        env:
+          USER_PROVIDED_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          VERSION_TO_USE=""
+          FIXED_PART="-android14-11" # <--- A14 6.1 的固定部分
+          if [[ -n "$USER_PROVIDED_VERSION" ]]; then
+            echo "使用用户提供的版本字符串: $USER_PROVIDED_VERSION"
+            VERSION_TO_USE="$USER_PROVIDED_VERSION"
+          else
+            echo "未提供版本字符串，为 A14 6.1 生成随机版本字符串..."
+            PREFIX1="gd"
+            PREFIX2="ab"
+            RANDOM_HEX=$(head /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 11 || true)
+            RANDOM_DIGITS=$(head /dev/urandom | LC_ALL=C tr -dc '0-9' | head -c 8 || true)
+            VERSION_TO_USE="${FIXED_PART}-${PREFIX1}${RANDOM_HEX}-${PREFIX2}${RANDOM_DIGITS}"
+            echo "生成的随机版本字符串: $VERSION_TO_USE"
+          fi
+          echo "version_string=${VERSION_TO_USE}" >> "$GITHUB_OUTPUT"
+
+      - name: 运行 A14 6.1 构建工作流
+        uses: ./.github/workflows/kernel-a14-6.1.yml # 这是你原来例子中的文件
+        secrets: inherit
+        with:
+          make_release: false
+          kernelsu_variant: ${{ inputs.kernelsu_variant }}
+          kernelsu_branch: ${{ inputs.kernelsu_branch }}
+          version: ${{ steps.generate_version_a14_61.outputs.version_string }} # 传递参数名为 version
+          use_zram: ${{ inputs.use_zram }}
+          use_kpm: ${{ inputs.use_kpm }}
+
+  # --- 编译 Android 15 (6.6) 的作业 ---
+  build_a15_66:
+    name: Build Kernel A15 6.6
+    if: github.event.inputs.build_a15_66 == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: 为 A15 6.6 生成版本字符串
+        id: generate_version_a15_66
+        env:
+          USER_PROVIDED_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          VERSION_TO_USE=""
+          FIXED_PART="-android15-13" # <--- A15 6.6 的固定部分
+          if [[ -n "$USER_PROVIDED_VERSION" ]]; then
+            echo "使用用户提供的版本字符串: $USER_PROVIDED_VERSION"
+            VERSION_TO_USE="$USER_PROVIDED_VERSION"
+          else
+            echo "未提供版本字符串，为 A15 6.6 生成随机版本字符串..."
+            PREFIX1="gd"
+            PREFIX2="ab"
+            RANDOM_HEX=$(head /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 11 || true)
+            RANDOM_DIGITS=$(head /dev/urandom | LC_ALL=C tr -dc '0-9' | head -c 8 || true)
+            VERSION_TO_USE="${FIXED_PART}-${PREFIX1}${RANDOM_HEX}-${PREFIX2}${RANDOM_DIGITS}"
+            echo "生成的随机版本字符串: $VERSION_TO_USE"
+          fi
+          echo "version_string=${VERSION_TO_USE}" >> "$GITHUB_OUTPUT"
+
+      - name: 运行 A15 6.6 构建工作流
+        uses: ./.github/workflows/kernel-a15-6.6.yml
+        secrets: inherit
+        with:
+          make_release: false
+          kernelsu_variant: ${{ inputs.kernelsu_variant }}
+          kernelsu_branch: ${{ inputs.kernelsu_branch }}
+          version: ${{ steps.generate_version_a15_66.outputs.version_string }} # 传递参数名为 version
+          use_zram: ${{ inputs.use_zram }}
+          use_kpm: ${{ inputs.use_kpm }}
