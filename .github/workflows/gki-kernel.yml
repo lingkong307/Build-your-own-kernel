@@ -633,25 +633,41 @@ jobs:
         id: prepare_artifact_name
         shell: bash
         run: |
-          DESIRED_ARTIFACT_BASENAME=""
+          # 1. 构建基础文件名 (不含条件后缀和 .zip)
+          DESIRED_ARTIFACT_BASENAME_PREFIX=""
           if [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ] && [ -n "${{ env.SUKI_VERSION_NUM }}" ]; then
-            DESIRED_ARTIFACT_BASENAME="AnyKernel3_SukiSUUltra_${{ env.SUKI_VERSION_NUM }}_${{ inputs.kernel_version }}-${{ inputs.sub_level }}"
+            # 这是您期望的 SukiSU 特有格式
+            DESIRED_ARTIFACT_BASENAME_PREFIX="AnyKernel3_SukiSUUltra_${{ env.SUKI_VERSION_NUM }}_${{ inputs.kernel_version }}-${{ inputs.sub_level }}"
           else
-            echo "::error::The requested filename format 'AnyKernel3_SukiSUUltra_VERSION_KERNEL-SUBLEVEL.zip' can only be generated for SukiSU variant with a valid SukiSU version number."
+            # 如果不是 SukiSU 或 SUKI_VERSION_NUM 未定义，则报错退出
+            # 因为这个特定的文件名格式是为 SukiSU 设计的
+            echo "::error::请求的文件名格式 'AnyKernel3_SukiSUUltra_VERSION_KERNEL-SUBLEVEL.zip' 仅能为 SukiSU 类型且具有有效 SukiSU 版本号时生成。"
+            echo "::error::当前类型: ${{ inputs.kernelsu_variant }}, SukiSU 版本号: ${{ env.SUKI_VERSION_NUM }}"
             exit 1
           fi
-          echo "artifact_upload_name=${DESIRED_ARTIFACT_BASENAME}" >> $GITHUB_OUTPUT
+
+          # 2. 构建条件后缀字符串
+          SUFFIX_STRING=""
+          if [ "${{ inputs.use_kpm }}" == "true" ]; then
+            SUFFIX_STRING="${SUFFIX_STRING}_KPM"
+          fi
+          if [ "${{ inputs.use_zram }}" == "true" ]; then
+            SUFFIX_STRING="${SUFFIX_STRING}_LZ4KD"
+          fi
+          
+          # 3. 组合基础文件名和后缀
+          FINAL_ARTIFACT_BASENAME="${DESIRED_ARTIFACT_BASENAME_PREFIX}${SUFFIX_STRING}"
+          
+          echo "最终构件基础名 (用于上传步骤的 name): ${FINAL_ARTIFACT_BASENAME}"
+          echo "artifact_upload_name=${FINAL_ARTIFACT_BASENAME}" >> $GITHUB_OUTPUT
+          # AnyKernel3 目录路径的 echo 仅为调试信息，上传步骤不直接使用它
           echo "AnyKernel3 目录路径用于上传: ./AnyKernel3/"
 
       - name: 上传编译资产 (直接打包AnyKernel3目录内容)
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.prepare_artifact_name.outputs.artifact_upload_name }}
-          path: ./AnyKernel3/ # actions/upload-artifact 会将此目录内容打包成一个 .zip 文件
+          path: ./AnyKernel3/ 
           if-no-files-found: error
 
-      # ... (后续的 boot.img 生成和上传步骤，如果仍然需要独立的 boot.img 文件的话，可以保留)
-      # 注意：如果您只想要最终的那个 AnyKernel3_SukiSUUltra_....zip 刷机包，
-      # 那么后面生成和上传各种 boot-xx.img 的步骤可能就不再需要了，或者可以作为可选的独立构件。
-      # 根据您“只上传那个zip刷机包就行”的原始诉求，也许这些可以移除或注释掉。
-      # 但为了最小化改动，暂时保留它们，您可以根据需要决定。
+      # ... (后续步骤保持不变) ...
