@@ -1,10 +1,10 @@
 name: GKI Kernel Build
 permissions:
-  contents: write  # Allow writing to repository contents (for pushing tags)
-  actions: write   # Allows triggering actions
+  contents: write  # 允许写入仓库内容 (用于推送标签)
+  actions: write   # 允许触发 actions
 
 on:
-  workflow_call: # This allows this workflow to be called from another workflow
+  workflow_call: # 允许此工作流被其他工作流调用
     inputs:
       make_release:
         required: true
@@ -151,7 +151,7 @@ jobs:
           git clone https://github.com/WildPlusKernel/kernel_patches.git
           # Sukisu的补丁仓库
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
-      - name: 设置 CONFIG 环境变量
+      - name: 设置 CONFIG 环境变量 # 此步骤与之前的重复，但按原样保留
         run: |
           # Set CONFIG dynamically based on inputs values
           CONFIG="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.sub_level }}"
@@ -188,15 +188,15 @@ jobs:
       - name: 确定 KernelSU 的分支
         run: |
           if [[ "${{ inputs.kernelsu_branch }}" == "Stable(标准)" ]]; then
-              echo "BRANCH=-" >> $GITHUB_ENV
+                echo "BRANCH=-" >> $GITHUB_ENV
           elif [[ "${{ inputs.kernelsu_branch }}" == "Dev(开发)" && ( "${{ inputs.kernelsu_variant }}" == "Official" || "${{ inputs.kernelsu_variant }}" == "MKSU" ) ]]; then
-              echo "BRANCH=-s main" >> $GITHUB_ENV
+                echo "BRANCH=-s main" >> $GITHUB_ENV
           elif [[ "${{ inputs.kernelsu_branch }}" == "Dev(开发)" && "${{ inputs.kernelsu_variant }}" == "Next" ]]; then
-              echo "BRANCH=-s next" >> $GITHUB_ENV
+                echo "BRANCH=-s next" >> $GITHUB_ENV
           elif [[ "${{ inputs.kernelsu_branch }}" == "Stable(标准)" && ( "${{ inputs.kernelsu_variant }}" == "SukiSU" ) ]]; then
-              echo "BRANCH=-" >> $GITHUB_ENV
+                echo "BRANCH=-" >> $GITHUB_ENV
           elif [[ "${{ inputs.kernelsu_branch }}" == "Dev(开发)" && ( "${{ inputs.kernelsu_variant }}" == "SukiSU" ) ]]; then
-              echo "BRANCH=-s susfs-dev" >> $GITHUB_ENV
+                echo "BRANCH=-s susfs-dev" >> $GITHUB_ENV
           else
             echo "Error: Custom branch not provided for 'Other(其他/指定)'" >&2
             exit 1
@@ -219,6 +219,33 @@ jobs:
           elif [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
             echo "Adding KernelSU SukiSU..."
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash $BRANCH
+          fi
+
+      - name: 获取 SukiSU 版本号 # <<< 新增步骤：获取SukiSU版本
+        if: inputs.kernelsu_variant == 'SukiSU'
+        shell: bash
+        run: |
+          echo "正在获取 SukiSU 版本号..."
+          # SukiSU的setup.sh脚本通常会在 $CONFIG 目录下创建一个名为 KernelSU 的子目录
+          SUKI_DIR="$CONFIG/KernelSU"
+          if [ -d "$SUKI_DIR/.git" ]; then
+            cd "$SUKI_DIR"
+            # 尝试获取 main 分支的提交数，如果失败则尝试 master 分支
+            COMMIT_COUNT=$(git rev-list --count main 2>/dev/null || git rev-list --count master 2>/dev/null || echo 0)
+            if [ "$COMMIT_COUNT" -ne "0" ]; then
+              # SukiSU 版本号计算逻辑，与您提供的第一个脚本一致
+              SUKI_VER_CALC=$(expr $COMMIT_COUNT + 10606)
+              echo "SukiSU 版本号计算成功: $SUKI_VER_CALC"
+              echo "SUKI_VERSION_NUM=$SUKI_VER_CALC" >> $GITHUB_ENV
+              # 可选: 根据第一个脚本的逻辑，如果需要修改 SukiSU 内的 Makefile，可以在这里添加
+              # sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${SUKI_VER_CALC}/" kernel/Makefile
+            else
+              echo "警告: 在 $SUKI_DIR 中未能正确统计 git 提交数 (main/master 分支不存在或无提交)。"
+              echo "SUKI_VERSION_NUM=" >> $GITHUB_ENV # 设置为空，以便后续判断
+            fi
+          else
+            echo "警告: SukiSU 的 .git 目录 ($SUKI_DIR/.git) 未找到，无法获取 SukiSU 版本号。"
+            echo "SUKI_VERSION_NUM=" >> $GITHUB_ENV # 设置为空
           fi
 
       - name: 为 KernelSU 变体安装 SUSFS 补丁
@@ -245,7 +272,7 @@ jobs:
             patch -p1 --forward --fuzz=3 < kernel-patch-susfs-v1.5.7-to-KernelSU-Next.patch
           elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
             echo "Applying SUSFS patches for MKSU..."
-             cd ./KernelSU
+              cd ./KernelSU
             cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
             patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
 
@@ -256,7 +283,7 @@ jobs:
             patch -p1 < fix.patch || true
           elif [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
             echo "Applying SUSFS patches for SukiSU..."
-             cd ./KernelSU
+              cd ./KernelSU # SukiSU 通常也使用 KernelSU 目录名
 
 
             echo "Applying SukiSU specific SUSFS patch..."
@@ -413,7 +440,7 @@ jobs:
           elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-                    # Add additional tmpfs config setting
+                  # Add additional tmpfs config setting
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
@@ -653,7 +680,8 @@ jobs:
       - name: 上传编译资产
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}
+          # <<< 修改构件名称，如果kernelsu_variant是SukiSU且SUKI_VERSION_NUM有效，则添加版本号
+          name: ${{ inputs.kernelsu_variant }}${{ (inputs.kernelsu_variant == 'SukiSU' && env.SUKI_VERSION_NUM != '' && env.SUKI_VERSION_NUM != null) && format('_SukiSU{0}', env.SUKI_VERSION_NUM) || '' }}_kernel-${{ env.CONFIG }}
           path: |
             *AnyKernel3.zip
             *.img
