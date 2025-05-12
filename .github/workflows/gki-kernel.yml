@@ -629,24 +629,31 @@ jobs:
           # 此步骤不再执行 zip -r 命令，也不再删除 ./AnyKernel3/ 内的 Image 文件。
           echo "AnyKernel3 directory is now prepared with the kernel image."
 
+      # ... (所有之前的步骤保持不变) ...
+
       - name: 准备构件名称
         id: prepare_artifact_name
         shell: bash
         run: |
-          # 1. 构建基础文件名 (不含条件后缀和 .zip)
           DESIRED_ARTIFACT_BASENAME_PREFIX=""
+          # 判断是否为 SukiSU 变体并且 SukiSU 版本号有效
           if [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ] && [ -n "${{ env.SUKI_VERSION_NUM }}" ]; then
-            # 这是您期望的 SukiSU 特有格式
+            # SukiSU 特有格式
             DESIRED_ARTIFACT_BASENAME_PREFIX="AnyKernel3_SukiSUUltra_${{ env.SUKI_VERSION_NUM }}_${{ inputs.kernel_version }}-${{ inputs.sub_level }}"
+            echo "::notice::Using SukiSU-specific naming convention: ${DESIRED_ARTIFACT_BASENAME_PREFIX}"
           else
-            # 如果不是 SukiSU 或 SUKI_VERSION_NUM 未定义，则报错退出
-            # 因为这个特定的文件名格式是为 SukiSU 设计的
-            echo "::error::请求的文件名格式 'AnyKernel3_SukiSUUltra_VERSION_KERNEL-SUBLEVEL.zip' 仅能为 SukiSU 类型且具有有效 SukiSU 版本号时生成。"
-            echo "::error::当前类型: ${{ inputs.kernelsu_variant }}, SukiSU 版本号: ${{ env.SUKI_VERSION_NUM }}"
-            exit 1
+            # 为其他 KernelSU 变体或 SukiSU 版本号缺失时，使用通用命名格式
+            if [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
+              echo "::warning::SukiSU variant selected, but SUKI_VERSION_NUM ('${{ env.SUKI_VERSION_NUM }}') is missing or empty. Falling back to generic naming."
+            else
+              echo "::notice::Using generic naming convention for variant '${{ inputs.kernelsu_variant }}'."
+            fi
+            # 通用基础名称格式: VARIANT_kernel-ANDROIDVERSION-KERNELVERSION-SUBLEVEL
+            # 其中 CONFIG 环境变量是 ${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.sub_level }}
+            DESIRED_ARTIFACT_BASENAME_PREFIX="${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}"
           fi
 
-          # 2. 构建条件后缀字符串
+          # 构建条件后缀字符串 (KPM, LZ4KD) - 这部分逻辑对所有变体都适用
           SUFFIX_STRING=""
           if [ "${{ inputs.use_kpm }}" == "true" ]; then
             SUFFIX_STRING="${SUFFIX_STRING}_KPM"
@@ -655,19 +662,17 @@ jobs:
             SUFFIX_STRING="${SUFFIX_STRING}_LZ4KD"
           fi
           
-          # 3. 组合基础文件名和后缀
+          # 组合基础文件名和后缀
           FINAL_ARTIFACT_BASENAME="${DESIRED_ARTIFACT_BASENAME_PREFIX}${SUFFIX_STRING}"
           
           echo "最终构件基础名 (用于上传步骤的 name): ${FINAL_ARTIFACT_BASENAME}"
           echo "artifact_upload_name=${FINAL_ARTIFACT_BASENAME}" >> $GITHUB_OUTPUT
-          # AnyKernel3 目录路径的 echo 仅为调试信息，上传步骤不直接使用它
-          echo "AnyKernel3 目录路径用于上传: ./AnyKernel3/"
+          echo "AnyKernel3 目录路径用于上传: ./AnyKernel3/" # 仅为调试信息
 
+      # ... (后续的上传步骤保持不变) ...
       - name: 上传编译资产 (直接打包AnyKernel3目录内容)
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.prepare_artifact_name.outputs.artifact_upload_name }}
           path: ./AnyKernel3/ 
           if-no-files-found: error
-
-      # ... (后续步骤保持不变) ...
