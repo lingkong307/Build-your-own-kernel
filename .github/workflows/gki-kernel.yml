@@ -677,11 +677,36 @@ jobs:
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
           cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
 
-      - name: 上传编译资产
+      - name: 准备最终刷机包文件名并重命名
+        id: prepare_zip_name
+        shell: bash
+        run: |
+          ORIGINAL_ZIP_NAME="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
+          # 构建期望的最终构件基础名 (不含.zip后缀)
+          FINAL_ARTIFACT_BASE_NAME="${{ inputs.kernelsu_variant }}${{ (inputs.kernelsu_variant == 'SukiSU' && env.SUKI_VERSION_NUM != '' && env.SUKI_VERSION_NUM != null) && format('_SukiSU{0}', env.SUKI_VERSION_NUM) || '' }}_kernel-${{ env.CONFIG }}"
+          
+          FINAL_ZIP_NAME="${FINAL_ARTIFACT_BASE_NAME}.zip" # 加上.zip后缀作为实际文件名
+          
+          echo "原始刷机包名称: ${ORIGINAL_ZIP_NAME}"
+          echo "期望的最终刷机包名称: ${FINAL_ZIP_NAME}"
+          
+          if [ -f "${ORIGINAL_ZIP_NAME}" ]; then
+            mv "${ORIGINAL_ZIP_NAME}" "${FINAL_ZIP_NAME}"
+            echo "已将 ${ORIGINAL_ZIP_NAME} 重命名为 ${FINAL_ZIP_NAME}"
+            # 将最终的实际文件名（含.zip）传递给后续步骤
+            echo "final_zip_filename=${FINAL_ZIP_NAME}" >> $GITHUB_OUTPUT
+            # 将最终的基础构件名（不含.zip）传递给后续步骤
+            echo "final_artifact_basename=${FINAL_ARTIFACT_BASE_NAME}" >> $GITHUB_OUTPUT
+          else
+            echo "错误：原始刷机包 ${ORIGINAL_ZIP_NAME} 未找到！"
+            exit 1
+          fi
+
+      - name: 上传编译资产 (最终刷机包)
         uses: actions/upload-artifact@v4
         with:
-          # <<< 修改构件名称，如果kernelsu_variant是SukiSU且SUKI_VERSION_NUM有效，则添加版本号
-          name: ${{ inputs.kernelsu_variant }}${{ (inputs.kernelsu_variant == 'SukiSU' && env.SUKI_VERSION_NUM != '' && env.SUKI_VERSION_NUM != null) && format('_SukiSU{0}', env.SUKI_VERSION_NUM) || '' }}_kernel-${{ env.CONFIG }}
-          path: |
-            *AnyKernel3.zip
-            *.img
+          # 构件的名称使用重命名前缀 (action会自动添加.zip)
+          name: ${{ steps.prepare_zip_name.outputs.final_artifact_basename }}
+          # path 指向重命名后的那个唯一的刷机包文件
+          path: ${{ steps.prepare_zip_name.outputs.final_zip_filename }}
+          if-no-files-found: error
