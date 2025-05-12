@@ -567,41 +567,44 @@ jobs:
 
       # ... (从开始到 “创建Bootimgs文件夹并复制镜像” 的所有步骤保持不变) ...
 
-      - name: 创建Bootimgs文件夹并复制镜像
+      # ... (前面的步骤保持不变) ...
+
+      - name: 创建Bootimgs文件夹并复制镜像 # <<< 保留这个针对 A12/A13 的块
         if: ${{ inputs.android_version == 'android12' || inputs.android_version == 'android13' }}
         run: |
-          # ... (此步骤内容保持不变，它会在工作区根目录创建 Image, Image.lz4)
-          echo "Changing to configuration directory: $CONFIG..."
-          mkdir bootimgs
+          echo "Changing to configuration directory: $CONFIG..." # 注意：这行只是打印，不改变目录
+          mkdir bootimgs # 在工作区根目录创建
 
           echo "Creating bootimgs folder and copying images..."
+          # 从正确的构建输出路径复制
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image ./bootimgs
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image.lz4 ./bootimgs
-          # 将 Image 和 Image.lz4 复制到工作区根目录，供后续使用
+          # 复制到工作区根目录供后续步骤使用
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image ./Image
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image.lz4 ./Image.lz4
 
-          # Create gzip of the Image file in workspace root
+          # 在工作区根目录创建 Image.gz
           gzip -n -k -f -9 ./Image > ./Image.gz
 
-      - name: 创建Bootimgs文件夹并复制镜像
+      # <<<< 这里删除了原来重复的 A12/A13 块 >>>>
+
+      - name: 创建Bootimgs文件夹并复制镜像 # <<< 保留这个针对 A14/A15 的块
         if: ${{ inputs.android_version == 'android14' || inputs.android_version == 'android15' }}
         run: |
-          # ... (此步骤内容保持不变，它会在工作区根目录创建 Image, Image.lz4)
-          echo "Changing to configuration directory: $CONFIG..."
-          mkdir bootimgs
+          echo "Changing to configuration directory: $CONFIG..." # 注意：这行只是打印，不改变目录
+          mkdir bootimgs # 在工作区根目录创建
 
           echo "Creating bootimgs folder and copying images..."
+          # 从 Bazel 的输出路径复制
           cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image ./bootimgs
           cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image.lz4 ./bootimgs
-          # 将 Image 和 Image.lz4 复制到工作区根目录，供后续使用
+          # 复制到工作区根目录供后续步骤使用
           cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image ./Image
           cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image.lz4 ./Image.lz4
 
-          # Create gzip of the Image file in workspace root
+          # 在工作区根目录创建 Image.gz
           gzip -n -k -f -9 ./Image > ./Image.gz
 
-      # 关键修改点：替换原“创建不同格式的ZIP文件”步骤
       - name: 准备 AnyKernel3 目录内容
         run: |
           echo "Preparing AnyKernel3 directory contents..."
