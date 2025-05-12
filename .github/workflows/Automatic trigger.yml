@@ -1,4 +1,4 @@
-name: Hourly SukiSU Version Check and Kernel Build Trigger
+name: SukiSUUltra更新时自动触发构建
 
 on:
   schedule:
