@@ -677,36 +677,69 @@ jobs:
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
           cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
 
+      # ... (前面的步骤保持不变) ...
+
+      # (这是您现有的“创建不同格式的ZIP文件”步骤，它会生成原始名称的AnyKernel3.zip)
+      # 例如生成了: android14-6.1-75-AnyKernel3.zip (基于您的 inputs.android_version, inputs.kernel_version, inputs.sub_level, inputs.os_patch_level)
+
       - name: 准备最终刷机包文件名并重命名
-        id: prepare_zip_name
+        id: prepare_final_zip
         shell: bash
         run: |
+          # 1. 确定原始刷机包的文件名
+          #    这个文件名是基于多个 input 动态生成的，与“创建不同格式的ZIP文件”步骤中的 ZIP_NAME 一致
           ORIGINAL_ZIP_NAME="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
-          # 构建期望的最终构件基础名 (不含.zip后缀)
-          FINAL_ARTIFACT_BASE_NAME="${{ inputs.kernelsu_variant }}${{ (inputs.kernelsu_variant == 'SukiSU' && env.SUKI_VERSION_NUM != '' && env.SUKI_VERSION_NUM != null) && format('_SukiSU{0}', env.SUKI_VERSION_NUM) || '' }}_kernel-${{ env.CONFIG }}"
           
-          FINAL_ZIP_NAME="${FINAL_ARTIFACT_BASE_NAME}.zip" # 加上.zip后缀作为实际文件名
+          # 2. 构建期望的最终构件基础名 (不含.zip后缀) - 根据您提供的确切格式
+          DESIRED_ARTIFACT_BASENAME=""
+          if [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ] && [ -n "${{ env.SUKI_VERSION_NUM }}" ]; then
+            DESIRED_ARTIFACT_BASENAME="AnyKernel3_SukiSUUltra_${{ env.SUKI_VERSION_NUM }}_${{ inputs.kernel_version }}-${{ inputs.sub_level }}"
+          else
+            # 对于非 SukiSU 变体，或 SUKI_VERSION_NUM 未定义的情况:
+            # 您需要决定此时的文件名。为避免错误，这里我们让工作流失败，或使用一个明确的备用名。
+            # 为了直接解决您当前的问题，我们假设此流程主要为 SukiSU 的这个特定命名服务。
+            # 如果需要通用性，这里的逻辑需要扩展。
+            echo "::warning:: Desired filename format 'AnyKernel3_SukiSUUltra_...' is specific to SukiSU variant with a valid SukiSU version."
+            echo "::warning:: Current variant: ${{ inputs.kernelsu_variant }}, SukiSU_VERSION_NUM: ${{ env.SUKI_VERSION_NUM }}"
+            # 如果不是 SukiSU，或者版本号缺失，我们使用原始文件名作为基础名，以确保文件能被找到和上传，但文件名不符合您的 SukiSU 特定格式
+            # 或者直接报错退出：
+            # echo "::error::Cannot apply SukiSU-specific naming to variant '${{ inputs.kernelsu_variant }}' or SukiSU version is missing."
+            # exit 1
+            # 为了使流程能继续，这里我们退回使用原始名称（不含 AnyKernel3.zip 后缀）加上kernelsu_variant前缀，但这不符合您的 SukiSU 目标文件名
+             DESIRED_ARTIFACT_BASENAME="${{ inputs.kernelsu_variant }}_${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}"
+             # 如果您只关心SukiSU的情况，并且确定其他情况不会用此精确命名，可以考虑在此处报错退出，
+             # 或者确保env.SUKI_VERSION_NUM在SukiSU时一定有值。
+             # 根据您最新的精确要求，我们聚焦于生成您给出的SukiSU文件名：
+             if [ "${{ inputs.kernelsu_variant }}" != "SukiSU" ] || [ -z "${{ env.SUKI_VERSION_NUM }}" ]; then
+                echo "::error::The requested filename format 'AnyKernel3_SukiSUUltra_VERSION_KERNEL-SUBLEVEL.zip' can only be generated for SukiSU variant with a valid SukiSU version number."
+                exit 1
+             fi
+          fi
           
-          echo "原始刷机包名称: ${ORIGINAL_ZIP_NAME}"
-          echo "期望的最终刷机包名称: ${FINAL_ZIP_NAME}"
+          FINAL_RENAMED_ZIP_NAME="${DESIRED_ARTIFACT_BASENAME}.zip" # 加上.zip后缀作为实际重命名后的文件名
+          
+          echo "原始刷机包名称 (Source AnyKernel3 zip): ${ORIGINAL_ZIP_NAME}"
+          echo "期望的最终构件基础名 (Artifact base name): ${DESIRED_ARTIFACT_BASENAME}"
+          echo "重命名后的刷机包文件名 (Target actual zip name): ${FINAL_RENAMED_ZIP_NAME}"
           
           if [ -f "${ORIGINAL_ZIP_NAME}" ]; then
-            mv "${ORIGINAL_ZIP_NAME}" "${FINAL_ZIP_NAME}"
-            echo "已将 ${ORIGINAL_ZIP_NAME} 重命名为 ${FINAL_ZIP_NAME}"
-            # 将最终的实际文件名（含.zip）传递给后续步骤
-            echo "final_zip_filename=${FINAL_ZIP_NAME}" >> $GITHUB_OUTPUT
-            # 将最终的基础构件名（不含.zip）传递给后续步骤
-            echo "final_artifact_basename=${FINAL_ARTIFACT_BASE_NAME}" >> $GITHUB_OUTPUT
+            mv "${ORIGINAL_ZIP_NAME}" "${FINAL_RENAMED_ZIP_NAME}"
+            echo "已将 ${ORIGINAL_ZIP_NAME} 重命名为 ${FINAL_RENAMED_ZIP_NAME}"
+            # 将重命名后的实际文件名（含.zip）传递给上传步骤
+            echo "final_zip_to_upload=${FINAL_RENAMED_ZIP_NAME}" >> $GITHUB_OUTPUT
+            # 将构件的基础名（不含.zip）传递给上传步骤的 name 参数
+            echo "artifact_upload_name=${DESIRED_ARTIFACT_BASENAME}" >> $GITHUB_OUTPUT
           else
-            echo "错误：原始刷机包 ${ORIGINAL_ZIP_NAME} 未找到！"
+            echo "错误：原始刷机包 ${ORIGINAL_ZIP_NAME} 未找到！路径：$(pwd)"
+            ls -la # 列出当前目录文件，帮助调试
             exit 1
           fi
 
       - name: 上传编译资产 (最终刷机包)
         uses: actions/upload-artifact@v4
         with:
-          # 构件的名称使用重命名前缀 (action会自动添加.zip)
-          name: ${{ steps.prepare_zip_name.outputs.final_artifact_basename }}
-          # path 指向重命名后的那个唯一的刷机包文件
-          path: ${{ steps.prepare_zip_name.outputs.final_zip_filename }}
-          if-no-files-found: error
+          # 构件的名称使用上一步确定的构件基础名 (action会自动添加.zip后缀)
+          name: ${{ steps.prepare_final_zip.outputs.artifact_upload_name }}
+          # path 指向那个已被重命名为最终期望名称的刷机包文件
+          path: ${{ steps.prepare_final_zip.outputs.final_zip_to_upload }}
+          if-no-files-found: error # 如果指定文件没找到，则构建报错
