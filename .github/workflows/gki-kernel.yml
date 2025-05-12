@@ -488,42 +488,45 @@ jobs:
           # Remove duplicates
           sort -u "$CONFIG_FILE" -o "$CONFIG_FILE"
 
-      - name: 配置内核名称和版本信息
+      - name: 清理和规范化 gki_defconfig (Bazel 构建前)
+        # 这个步骤只针对 Bazel 构建 (通常是 Android 14+)
+        if: ${{ !(inputs.android_version == 'android12' || inputs.android_version == 'android13') }}
         run: |
-          echo "Configuring kernel local version..."
-          cd "$CONFIG"
-          # Modify setlocalversion based on input.version
-          if [ -n "${{ inputs.version }}" ]; then
-            echo "Using provided version string: ${{ inputs.version }}"
-            # Replace the last echo command that outputs the version
-            sed -i '$s|echo .*|echo "${{ inputs.version }}"|' ./common/scripts/setlocalversion
-          else
-            echo "No custom version provided, using default."
-            # Remove -dirty suffix if needed by the build system
-            sed -i 's/-dirty//' ./common/scripts/setlocalversion
-          fi
+          echo "Normalizing gki_defconfig for Bazel build in $CONFIG/common..."
+          cd "$CONFIG/common"
 
-          # Modify mkcompile_h timestamp/version string (optional, can be removed if not desired)
-          # Using a fixed string might be less desirable than letting build system handle it.
-          # perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sat Apr 20 04:20:00 UTC 2024"}' ./common/scripts/mkcompile_h
+          echo "Step 1: Merging arch/arm64/configs/gki_defconfig (previously modified by scripts) with standard GKI fragments into .config"
+          # 使用 scripts/kconfig/merge_config.sh 来合并您已经修改过的 gki_defconfig 和其他必要的配置片段
+          # 确保这里的路径都是相对于 $CONFIG/common 的
+          # 注意：您可能需要根据您的GKI版本和具体需求调整这些fragments
+          # 常见的fragments包括 gki_kuser.defconfig, android/kernel_debug.config, android/kasan.config, android/gki_hardening.config 等
+          # 确保这些fragment文件存在于预期的路径下 (例如 common/arch/arm64/configs/ 或 common/android/)
+          scripts/kconfig/merge_config.sh -m .config \
+            arch/arm64/configs/gki_defconfig \
+            arch/arm64/configs/gki_kuser.defconfig \
+            android/gki_vab.config \
+            android/gki_config_groups.config \
+            android/gki_memory.config \
+            android/gki_kasan.config \
+            android/gki_hardening.config \
+            android/gki_modules.config \
+            android/gki_optimization.config \
+            android/gki_profiling.config \
+            android/gki_wifi.config \
+            # 如有其他特定 GKI 版本或自定义的 fragments，请在此处添加
+            # 例如：android/kernel_debug.config (如果需要)
 
-          # Clean up build artifacts/configs if needed based on build system type
-          if [ -f "build/build.sh" ]; then # Make build
-             echo "Using Make build system adjustments."
-             # sed already handled -dirty above
-          else # Bazel build
-             echo "Using Bazel build system adjustments."
-             # Remove ABI checks/protected lists if they cause issues
-             # sed -i '/^[[:space:]]*"protected_exports_list".*$/d' ./common/BUILD.bazel
-             # rm -rf ./common/android/abi_gki_protected_exports_*
-             # Remove maybe-dirty from Bazel stamp command
-             sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl
-             # Ensure CONFIG_LOCALVERSION in defconfig doesn't have extra quotes if needed
-             # sed -E -i '/^CONFIG_LOCALVERSION=/ s/(.*)"$/\1"/' ./common/arch/arm64/configs/gki_defconfig
-          fi
-          cd ..
+          echo "Step 2: Running 'make savedefconfig' to generate a minimal defconfig based on the merged .config"
+          # KCONFIG_CONFIG=.config 确保 make 使用我们刚生成的 .config
+          # ARCH=arm64 是必需的
+          # savedefconfig 会在当前目录 ($CONFIG/common) 生成一个名为 'defconfig' 的文件
+          make KCONFIG_CONFIG=.config ARCH=arm64 savedefconfig
 
-      # ... (紧接在 "添加SUSFS和其他配置设置" 步骤之后)
+          echo "Step 3: Overwriting the source arch/arm64/configs/gki_defconfig with the newly generated minimal 'defconfig'"
+          cp defconfig arch/arm64/configs/gki_defconfig
+
+          echo "gki_defconfig has been normalized by savedefconfig."
+          cd ../.. # 返回工作区根目录 (GITHUB_WORKSPACE)
 
       - name: 清理和规范化 gki_defconfig (Bazel 构建前)
         # 这个步骤只针对 Bazel 构建 (通常是 Android 14+)
