@@ -532,27 +532,6 @@ jobs:
             cd ../../..
           fi
 
-      # [修改] 复制编译好的内核镜像 (Image) 到工作区根目录
-      - name: 复制内核镜像
-        run: |
-          echo "复制编译好的内核 Image..."
-          IMAGE_SOURCE_PATH=""
-          if [ "${{ inputs.android_version }}" == "android12" ] || [ "${{ inputs.android_version }}" == "android13" ]; then
-            IMAGE_SOURCE_PATH="./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image"
-          elif [ "${{ inputs.android_version }}" == "android14" ] || [ "${{ inputs.android_version }}" == "android15" ]; then
-            IMAGE_SOURCE_PATH="./$CONFIG/bazel-bin/common/kernel_aarch64/Image"
-          else
-            echo "错误: 未知的安卓版本 (${{ inputs.android_version }}) 用于复制 Image 文件。"
-            exit 1
-          fi
-
-          if [ -f "$IMAGE_SOURCE_PATH" ]; then
-            cp "$IMAGE_SOURCE_PATH" ./Image
-            echo "Image 文件已从 $IMAGE_SOURCE_PATH 复制到 ./Image"
-          else
-            echo "错误: Image 文件未找到于 $IMAGE_SOURCE_PATH"
-            exit 1
-          fi
 
       # ... (前面的步骤，包括克隆 AnyKernel3 模板，编译内核，打补丁等) ...
 
