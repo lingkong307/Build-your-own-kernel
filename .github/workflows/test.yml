@@ -772,7 +772,7 @@ jobs:
         with:
           name: |
             ${{ (github.event.inputs.kernelsu_variant == 'SukiSU' && env.SUKI_VERSION_NUM != '' && env.SUKI_VERSION_NUM != '00000') &&
-                format('AnyKernel3_SukiSUUltra_{0}_{1}-{2}_{3}', env.SUKI_VERSION_NUM, env.SELECTED_KERNEL_VERSION, env.SELECTED_SUB_LEVEL, env.FINAL_KERNEL_LOCAL_VERSION) ||
-                format('AnyKernel3_{0}_{1}-{2}_{3}_{4}', github.event.inputs.kernelsu_variant, env.SELECTED_KERNEL_VERSION, env.SELECTED_SUB_LEVEL, env.SELECTED_OS_PATCH_LEVEL, env.FINAL_KERNEL_LOCAL_VERSION) }}
-          path: ./AnyKernel3 # actions/upload-artifact will zip this directory
+                format('AnyKernel3_SukiSUUltra_{0}_{1}-{2}_{3}', env.SUKI_VERSION_NUM, env.SELECTED_KERNEL_VERSION, env.SELECTED_SUB_LEVEL, env.ARTIFACT_NAME_SUFFIX_PART) ||
+                format('AnyKernel3_{0}_{1}-{2}_{3}_{4}', github.event.inputs.kernelsu_variant, env.SELECTED_KERNEL_VERSION, env.SELECTED_SUB_LEVEL, env.SELECTED_OS_PATCH_LEVEL, env.ARTIFACT_NAME_SUFFIX_PART) }}
+          path: ./AnyKernel3
           if-no-files-found: error
