@@ -221,6 +221,29 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash $BRANCH
           fi
 
+      - name: 获取 SukiSU 版本号
+        if: inputs.kernelsu_variant == 'SukiSU'
+        shell: bash 
+        run: | # CWD is $CONFIG from previous step
+          echo "正在获取 SukiSU 版本号..."
+          SUKI_DIR="./KernelSU" # Path relative to $CONFIG (current directory)
+          SUKI_VERSION_NUM="" 
+          if [ -d "$SUKI_DIR/.git" ]; then
+            cd "$SUKI_DIR" # Now in $CONFIG/KernelSU
+            COMMIT_COUNT=$(git rev-list --count main 2>/dev/null || git rev-list --count master 2>/dev/null || git rev-list --count susfs-dev 2>/dev/null || echo 0)
+            if [ "$COMMIT_COUNT" -ne "0" ]; then
+              SUKI_VERSION_NUM=$(expr $COMMIT_COUNT + 10606)
+              echo "SukiSU 版本号计算成功: $SUKI_VERSION_NUM"
+            else
+              echo "警告: 在 $SUKI_DIR 中未能正确统计 git 提交数 (main/master/susfs-dev)。"
+            fi
+            cd .. # Back to $CONFIG
+          else
+            echo "警告: SukiSU 的 .git 目录 ($PWD/$SUKI_DIR/.git) 未找到。" # Show PWD for context
+          fi
+          echo "SUKI_VERSION_NUM=$SUKI_VERSION_NUM" >> $GITHUB_ENV
+          # CWD is $CONFIG
+
       - name: 为 KernelSU 变体安装 SUSFS 补丁
         run: |
           echo "Changing to configuration directory: $CONFIG..."
@@ -553,17 +576,45 @@ jobs:
           # Create gzip of the Image file
           gzip -n -k -f -9 ./Image > ./Image.gz
 
-      - name: 生成指定格式的单个AnyKernel3刷机包
-        run: |
-         echo "只生成单个未二次压缩的AnyKernel3刷机包"
-         cd ./AnyKernel3
+        - name: 生成指定格式的单个AnyKernel3刷机包
+          run: |
+           VARIANT=${{ inputs.kernelsu_variant }}
+           SUKI_VER=${{ env.SUKI_VERSION_NUM }}
+           if [ -z "$SUKI_VER" ]; then
+             SUKI_VER="unknownversion"
+           fi
+    
+    # 可按需要做 variant 名字转换，例如：
+           case "$VARIANT" in
+            "SukiSU")
+              VARIANT_STR="SukiSUUltra"
+              ;;
+            "Official")
+             VARIANT_STR="Official"
+             ;;
+            "MKSU")
+             VARIANT_STR="MKSU"
+             ;;
+            "Next")
+             VARIANT_STR="Next"
+             ;;
+            *)
+             VARIANT_STR="$VARIANT"
+             ;;
+           esac
 
-         rm -f Image Image.lz4 Image.gz
-         cp ../Image ./Image
+           echo "Variant name: $VARIANT_STR"
+           echo "Version number: $SUKI_VER"
+    
+           cd ./AnyKernel3
+           rm -f Image Image.lz4 Image.gz
+           cp ../Image ./Image
 
-         ZIP_NAME="AnyKernel3_SukiSUUltra_${{ inputs.revision }}_${{ inputs.kernel_version }}-${{ inputs.sub_level }}.zip"
-         echo "Creating zip file: $ZIP_NAME..."
-         zip -r "../$ZIP_NAME" ./
+           ZIP_NAME="AnyKernel3_${VARIANT_STR}_${SUKI_VER}_${{ inputs.kernel_version }}-${{ inputs.sub_level }}.zip"
+           echo "Creating zip file: $ZIP_NAME..."
+           zip -r "../$ZIP_NAME" ./
+          shell: bash
+
 
 
 
