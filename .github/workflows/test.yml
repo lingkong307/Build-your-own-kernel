@@ -309,26 +309,25 @@ jobs:
       - name: 获取 SukiSU 版本号
         if: github.event.inputs.kernelsu_variant == 'SukiSU'
         shell: bash
-        working-directory: ./${{ env.CONFIG }} # Ensure CWD is $CONFIG
+        working-directory: ./${{ env.CONFIG }} # 确保当前工作目录是 ${{ env.CONFIG }}
         run: |
           echo "正在获取 SukiSU 版本号..."
-          SUKI_DIR="./KernelSU" # Path relative to current working directory ($CONFIG)
+          SUKI_DIR="./KernelSU" # KernelSU 的源码目录，相对于 ${{ env.CONFIG }}
           SUKI_VERSION_NUM=""
           if [ -d "$SUKI_DIR/.git" ]; then
-            cd "$SUKI_DIR" # Now in $CONFIG/KernelSU
-            # Try to determine the correct branch for commit count based on KSU_BRANCH_ARG or common dev branches
-            # This is a heuristic and might need adjustment based on SukiSU's branching strategy for setup.sh
-            # Example: if KSU_BRANCH_ARG contained "-s susfs-dev", count commits on "susfs-dev"
-            # For simplicity, trying common branches used by SukiSU
-            COMMIT_COUNT=$(git rev-list --count susfs-dev 2>/dev/null || git rev-list --count main 2>/dev/null || git rev-list --count master 2>/dev/null || echo 0)
+            cd "$SUKI_DIR" # 进入 KernelSU 源码目录 ($CONFIG/KernelSU)
+            
+            # 恢复原始的正确分支检查顺序来计算 COMMIT_COUNT
+            COMMIT_COUNT=$(git rev-list --count main 2>/dev/null || git rev-list --count master 2>/dev/null || git rev-list --count susfs-dev 2>/dev/null || echo 0)
+            
             if [ "$COMMIT_COUNT" -ne "0" ]; then
               SUKI_VERSION_NUM=$(expr $COMMIT_COUNT + 10606)
               echo "SukiSU 版本号计算成功: $SUKI_VERSION_NUM"
             else
-              echo "警告: 在 $PWD 中未能正确统计 git 提交数 (susfs-dev/main/master)。将使用默认值00000。"
+              echo "警告: 在 $PWD (原 $SUKI_DIR) 中未能正确统计 git 提交数 (main/master/susfs-dev)。将使用默认值00000。"
               SUKI_VERSION_NUM="00000"
             fi
-            cd .. # Back to $CONFIG
+            cd .. # 返回到 $CONFIG 目录
           else
             echo "警告: SukiSU 的 .git 目录 ($PWD/$SUKI_DIR/.git) 未找到。将使用默认值00000。"
             SUKI_VERSION_NUM="00000"
