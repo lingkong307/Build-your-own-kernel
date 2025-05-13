@@ -558,16 +558,13 @@ jobs:
     echo "只生成单个未二次压缩的AnyKernel3刷机包"
     cd ./AnyKernel3
 
-    # 清理旧的可能残留的镜像文件，避免误包
     rm -f Image Image.lz4 Image.gz
-
-    # 复制当前根目录下的Image文件进AnyKernel3目录
     cp ../Image ./Image
 
-    # 使用变量动态生成zip包名称
     ZIP_NAME="AnyKernel3_SukiSUUltra_${{ inputs.revision }}_${{ inputs.kernel_version }}-${{ inputs.sub_level }}.zip"
     echo "Creating zip file: $ZIP_NAME..."
     zip -r "../$ZIP_NAME" ./
+
 
       - name: 运行boot镜像 ${{ inputs.android_version }} 编译脚本
         if: ${{ inputs.android_version == 'android12' }}
