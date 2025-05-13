@@ -579,7 +579,7 @@ jobs:
           # 'name' 字段现在是最终刷机包的文件名
           name: |
             ${{ (inputs.kernelsu_variant == 'SukiSU' && env.SUKI_VERSION_NUM != '' && env.SUKI_VERSION_NUM != '00000') &&
-                format('AnyKernel3_SukiSUUltra_{0}_{1}-{2}.zip', env.SUKI_VERSION_NUM, inputs.kernel_version, inputs.sub_level) ||
-                format('AnyKernel3_{0}_{1}-{2}_{3}.zip', inputs.kernelsu_variant, inputs.kernel_version, inputs.sub_level, inputs.os_patch_level) }}
+                format('AnyKernel3_SukiSUUltra_{0}_{1}-{2}', env.SUKI_VERSION_NUM, inputs.kernel_version, inputs.sub_level) ||
+                format('AnyKernel3_{0}_{1}-{2}_{3}', inputs.kernelsu_variant, inputs.kernel_version, inputs.sub_level, inputs.os_patch_level) }}
           path: ./AnyKernel3 # 让 actions/upload-artifact 直接压缩这个目录的内容
           if-no-files-found: error
