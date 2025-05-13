@@ -68,15 +68,10 @@ jobs:
 
       - name: 设定 CONFIG 环境变量
         run: |
-          # Set CONFIG dynamically based on inputs values
           CONFIG="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.sub_level }}"
-
-          # Set CONFIG as an environment variable for future steps
           echo "CONFIG=$CONFIG" >> $GITHUB_ENV
-
           echo "CONFIG set to: $CONFIG"
 
-      # Install ccache
       - name: 安装 ccache
         run: sudo apt update && sudo apt upgrade -y && sudo apt install -y ccache python3 git curl
 
@@ -105,7 +100,6 @@ jobs:
             mkbootimg
           key: toolchain-${{ runner.os }}-v1
 
-      # Step 2: Download toolchain if cache was not found
       - name: 下载工具链（如果未找到缓存）
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
@@ -124,12 +118,11 @@ jobs:
         env:
           BOOT_SIGN_KEY: ${{ secrets.BOOT_SIGN_KEY }}
         run: |
-            openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 > ./kernel-build-tools/linux-x86/share/avb/testkey_rsa2048.pem
-            echo "BOOT_SIGN_KEY_PATH=$GITHUB_WORKSPACE/kernel-build-tools/linux-x86/share/avb/testkey_rsa2048.pem" >> $GITHUB_ENV
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 > ./kernel-build-tools/linux-x86/share/avb/testkey_rsa2048.pem
+          echo "BOOT_SIGN_KEY_PATH=$GITHUB_WORKSPACE/kernel-build-tools/linux-x86/share/avb/testkey_rsa2048.pem" >> $GITHUB_ENV
 
       - name: 安装仓库
         run: |
-          # Install dependencies
           mkdir -p ./git-repo
           curl https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
           chmod a+rx ./git-repo/repo
@@ -142,24 +135,12 @@ jobs:
           ANYKERNEL_BRANCH="gki-2.0"
           SUSFS_BRANCH="gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}"
 
-          # Debug print the branches
           echo "Using branch for SUSFS: $SUSFS_BRANCH"
 
-          # Clone repositories using the branch names
           git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
           git clone https://github.com/WildPlusKernel/kernel_patches.git
-          # Sukisu的补丁仓库
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
-      - name: 设置 CONFIG 环境变量
-        run: |
-          # Set CONFIG dynamically based on inputs values
-          CONFIG="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.sub_level }}"
-
-          # Set CONFIG as an environment variable for future steps
-          echo "CONFIG=$CONFIG" >> $GITHUB_ENV
-
-          echo "CONFIG set to: $CONFIG"
 
       - name: 初始化和同步内核源代码
         run: |
@@ -167,21 +148,17 @@ jobs:
           mkdir -p "$CONFIG"
           cd "$CONFIG"
 
-          # Initialize and sync kernel source
-          echo "Initializing and syncing kernel source..."
           FORMATTED_BRANCH="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}"
           $REPO init --depth=1 --u https://android.googlesource.com/kernel/manifest -b common-${FORMATTED_BRANCH} --repo-rev=v2.16
 
           REMOTE_BRANCH=$(git ls-remote https://android.googlesource.com/kernel/common ${FORMATTED_BRANCH})
           DEFAULT_MANIFEST_PATH=.repo/manifests/default.xml
 
-          # Check if branch is deprecated
-          if grep -q deprecated <<< $REMOTE_BRANCH; then
+          if grep -q deprecated <<< "$REMOTE_BRANCH"; then
             echo "Found deprecated branch: $FORMATTED_BRANCH"
             sed -i "s/\"${FORMATTED_BRANCH}\"/\"deprecated\/${FORMATTED_BRANCH}\"/g" $DEFAULT_MANIFEST_PATH
           fi
 
-          # Sync repo and apply patches
           $REPO --version
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
 
@@ -221,29 +198,6 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash $BRANCH
           fi
 
-      - name: 获取 SukiSU 版本号
-        if: inputs.kernelsu_variant == 'SukiSU'
-        shell: bash 
-        run: | # CWD is $CONFIG from previous step
-          echo "正在获取 SukiSU 版本号..."
-          SUKI_DIR="./KernelSU" # Path relative to $CONFIG (current directory)
-          SUKI_VERSION_NUM="" 
-          if [ -d "$SUKI_DIR/.git" ]; then
-            cd "$SUKI_DIR" # Now in $CONFIG/KernelSU
-            COMMIT_COUNT=$(git rev-list --count main 2>/dev/null || git rev-list --count master 2>/dev/null || git rev-list --count susfs-dev 2>/dev/null || echo 0)
-            if [ "$COMMIT_COUNT" -ne "0" ]; then
-              SUKI_VERSION_NUM=$(expr $COMMIT_COUNT + 10606)
-              echo "SukiSU 版本号计算成功: $SUKI_VERSION_NUM"
-            else
-              echo "警告: 在 $SUKI_DIR 中未能正确统计 git 提交数 (main/master/susfs-dev)。"
-            fi
-            cd .. # Back to $CONFIG
-          else
-            echo "警告: SukiSU 的 .git 目录 ($PWD/$SUKI_DIR/.git) 未找到。" # Show PWD for context
-          fi
-          echo "SUKI_VERSION_NUM=$SUKI_VERSION_NUM" >> $GITHUB_ENV
-          # CWD is $CONFIG
-
       - name: 为 KernelSU 变体安装 SUSFS 补丁
         run: |
           echo "Changing to configuration directory: $CONFIG..."
@@ -251,7 +205,6 @@ jobs:
 
           echo "Applying SUSFS patches..."
 
-          # Copy SUSFS patches
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
@@ -268,7 +221,7 @@ jobs:
             patch -p1 --forward --fuzz=3 < kernel-patch-susfs-v1.5.7-to-KernelSU-Next.patch
           elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
             echo "Applying SUSFS patches for MKSU..."
-             cd ./KernelSU
+            cd ./KernelSU
             cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
             patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
 
@@ -279,8 +232,7 @@ jobs:
             patch -p1 < fix.patch || true
           elif [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
             echo "Applying SUSFS patches for SukiSU..."
-             cd ./KernelSU
-
+            cd ./KernelSU
 
             echo "Applying SukiSU specific SUSFS patch..."
           else
@@ -297,6 +249,7 @@ jobs:
             curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/fix/fix6.6.patch -o test.patch
             patch -p1 < test.patch || true
           fi
+
       - name: 应用新的HOOKS补丁
         run: |
           echo "Changing to configuration directory: $CONFIG..."
@@ -336,10 +289,9 @@ jobs:
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/common"
-          # Apply additional patch
           if [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
-          cp ../../SukiSU_patch/69_hide_stuff.patch ./
-          patch -p1 -F 3 < 69_hide_stuff.patch
+            cp ../../SukiSU_patch/69_hide_stuff.patch ./
+            patch -p1 -F 3 < 69_hide_stuff.patch
           else
             cp ../../kernel_patches/69_hide_stuff.patch ./
             patch -p1 -F 3 < 69_hide_stuff.patch
@@ -360,7 +312,6 @@ jobs:
           fi
 
           if [ "${{ inputs.kernel_version }}" != "6.6" ] && [ "${{ inputs.kernel_version }}" != "5.10" ]; then
-            # sed -i 's/CONFIG_MODULE_SIG=y/CONFIG_MODULE_SIG=n/g' "$CONFIG_FILE"
             if grep -q "CONFIG_ZSMALLOC" -- "$CONFIG_FILE"; then
                 echo "提示：文件 $CONFIG_FILE 包含字符串 CONFIG_ZSMALLOC。"
                 sed -i 's/CONFIG_ZSMALLOC=m/CONFIG_ZSMALLOC=y/g' "$CONFIG_FILE"
@@ -368,7 +319,6 @@ jobs:
                 echo "警告：文件 $CONFIG_FILE 不包含字符串 CONFIG_ZSMALLOC。"
                 echo "CONFIG_ZSMALLOC=y" >> "$CONFIG_FILE"
             fi
-
             sed -i 's/CONFIG_ZRAM=m/CONFIG_ZRAM=y/g' "$CONFIG_FILE"
           fi
 
@@ -395,14 +345,12 @@ jobs:
             echo "CONFIG_CRYPTO_LZ4K_OPLUS=y" >> "$CONFIG_FILE"
           fi
 
-
       - name: 添加所有管理器
         run: |
           cd "$CONFIG"
           case "${{ inputs.kernelsu_variant }}" in
             "Official")
               echo "Applying Manager patch for Official KernelSU..."
-              #cp ../kernel_patches/ksu/manager.patch ./
               ;;
             "NEXT")
               echo "Applying Manager patch for KernelSU Next..."
@@ -411,7 +359,6 @@ jobs:
               ;;
             "MKSU")
               echo "Applying Manager patch for MKSU..."
-              #cp ../kernel_patches/mksu/manager.patch .//
               ;;
           esac
           patch -p1 --fuzz=3 < manager.patch || echo "No Manager Patch"
@@ -422,7 +369,6 @@ jobs:
           cd "$CONFIG"
           echo "Adding configuration settings to gki_defconfig..."
 
-          # Add KSU configuration settings
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
 
           if [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
@@ -430,22 +376,19 @@ jobs:
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           elif [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
             echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
-
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
           elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-                    # Add additional tmpfs config setting
+
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-          # Add additional config setting
           echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-          # Add BBR Config
           echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_NET_SCH_FQ=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -453,10 +396,8 @@ jobs:
           echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
 
-          # Remove check_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
 
-          # Add SUSFS configuration settings
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -473,13 +414,12 @@ jobs:
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-
       - name: 配置内核名称
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
 
-          if [ ! -z ${{ inputs.version }} ]; then
+          if [ ! -z "${{ inputs.version }}" ]; then
             echo "版本号不为空"
             sed -i '$s|echo "\$res"|echo "${{ inputs.version }}"|' ./common/scripts/setlocalversion
           else
@@ -487,8 +427,6 @@ jobs:
             sed -i '$s|echo "\$res"|echo "\$res"|' ./common/scripts/setlocalversion
           fi
 
-
-          # Run perl command to modify UTS_VERSION
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sat Apr 20 04:20:00 UTC 2024"}' ./common/scripts/mkcompile_h
 
           echo "Building the kernel..."
@@ -518,6 +456,7 @@ jobs:
               tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
             fi
             ccache --show-stats
+
       - name: 修补 Image 文件 安卓12和安卓13(仅限sukisu)
         if: ${{ inputs.use_kpm && inputs.kernelsu_variant == 'SukiSU' && (inputs.android_version == 'android12' || inputs.android_version == 'android13') }}
         run: |
@@ -558,7 +497,6 @@ jobs:
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image ./
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image.lz4 ./
 
-          # Create gzip of the Image file
           gzip -n -k -f -9 ./Image > ./Image.gz
 
       - name: 创建Bootimgs文件夹并复制镜像
@@ -573,128 +511,70 @@ jobs:
           cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image ./
           cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image.lz4 ./
 
-          # Create gzip of the Image file
           gzip -n -k -f -9 ./Image > ./Image.gz
 
-        - name: 生成指定格式的单个AnyKernel3刷机包
-          run: |
-           VARIANT=${{ inputs.kernelsu_variant }}
-           SUKI_VER=${{ env.SUKI_VERSION_NUM }}
-           if [ -z "$SUKI_VER" ]; then
-             SUKI_VER="unknownversion"
-           fi
-    
-    # 可按需要做 variant 名字转换，例如：
-           case "$VARIANT" in
+      # --- 获取 SukiSU 版本号 ---
+      - name: 获取 SukiSU 版本号
+        if: inputs.kernelsu_variant == 'SukiSU'
+        shell: bash
+        run: |
+          echo "正在获取 SukiSU 版本号..."
+          SUKI_DIR="./KernelSU"
+          SUKI_VERSION_NUM=""
+          if [ -d "$SUKI_DIR/.git" ]; then
+            cd "$SUKI_DIR"
+            COMMIT_COUNT=$(git rev-list --count main 2>/dev/null || git rev-list --count master 2>/dev/null || git rev-list --count susfs-dev 2>/dev/null || echo 0)
+            if [ "$COMMIT_COUNT" -ne "0" ]; then
+              SUKI_VERSION_NUM=$(expr $COMMIT_COUNT + 10606)
+              echo "SukiSU 版本号计算成功: $SUKI_VERSION_NUM"
+            else
+              echo "警告: 在 $SUKI_DIR 中未能正确统计 git 提交数 (main/master/susfs-dev)。"
+            fi
+            cd ..
+          else
+            echo "警告: SukiSU 的 .git 目录 ($PWD/$SUKI_DIR/.git) 未找到。"
+          fi
+          echo "SUKI_VERSION_NUM=$SUKI_VERSION_NUM" >> $GITHUB_ENV
+
+      # --- 生成单个指定格式的 AnyKernel3 刷机包 ---
+      - name: 生成指定格式的单个AnyKernel3刷机包
+        shell: bash
+        run: |
+          VARIANT=${{ inputs.kernelsu_variant }}
+          SUKI_VER=${{ env.SUKI_VERSION_NUM }}
+          if [ -z "$SUKI_VER" ]; then
+            SUKI_VER="unknownversion"
+          fi
+          case "$VARIANT" in
             "SukiSU")
               VARIANT_STR="SukiSUUltra"
               ;;
             "Official")
-             VARIANT_STR="Official"
-             ;;
+              VARIANT_STR="Official"
+              ;;
             "MKSU")
-             VARIANT_STR="MKSU"
-             ;;
+              VARIANT_STR="MKSU"
+              ;;
             "Next")
-             VARIANT_STR="Next"
-             ;;
+              VARIANT_STR="Next"
+              ;;
             *)
-             VARIANT_STR="$VARIANT"
-             ;;
-           esac
-
-           echo "Variant name: $VARIANT_STR"
-           echo "Version number: $SUKI_VER"
-    
-           cd ./AnyKernel3
-           rm -f Image Image.lz4 Image.gz
-           cp ../Image ./Image
-
-           ZIP_NAME="AnyKernel3_${VARIANT_STR}_${SUKI_VER}_${{ inputs.kernel_version }}-${{ inputs.sub_level }}.zip"
-           echo "Creating zip file: $ZIP_NAME..."
-           zip -r "../$ZIP_NAME" ./
-          shell: bash
-
-
-
-
-      - name: 运行boot镜像 ${{ inputs.android_version }} 编译脚本
-        if: ${{ inputs.android_version == 'android12' }}
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd bootimgs
-
-          GKI_URL=https://dl.google.com/android/gki/gki-certified-boot-android12-5.10-"${{ inputs.os_patch_level }}"_"${{ inputs.revision }}".zip
-          FALLBACK_URL=https://dl.google.com/android/gki/gki-certified-boot-android12-5.10-2023-01_r1.zip
-
-          # Check if the GKI URL is available
-          echo "Checking if GKI kernel URL is reachable: $GKI_URL"
-          status=$(curl -sL -w "%{http_code}" "$GKI_URL" -o /dev/null)
-
-          if [ "$status" = "200" ]; then
-              echo "[+] Downloading from GKI_URL"
-              curl -Lo gki-kernel.zip "$GKI_URL"
-          else
-              echo "[+] $GKI_URL not found, using $FALLBACK_URL"
-              curl -Lo gki-kernel.zip "$FALLBACK_URL"
-          fi
-
-          # Unzip the downloaded kernel and remove the zip
-          echo "Unzipping the downloaded kernel..."
-          unzip gki-kernel.zip && rm gki-kernel.zip
-
-          echo "Unpacking boot.img..."
-          FULL_PATH=$(pwd)/boot-5.10.img
-          echo "Unpacking using: $FULL_PATH"
-
-          echo "Running unpack_bootimg.py..."
-          $UNPACK_BOOTIMG --boot_img="$FULL_PATH"
-
-          echo "Building Image.gz"
-          gzip -n -k -f -9 ./Image > ./Image.gz
-
-          echo "Building boot.img"
-          $MKBOOTIMG --header_version 4 --kernel Image --output boot.img --ramdisk out/ramdisk --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
-          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-          cp ./boot.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img
-
-          echo "Building boot-gz.img"
-          $MKBOOTIMG --header_version 4 --kernel Image.gz --output boot-gz.img --ramdisk out/ramdisk --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
-          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-gz.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-          cp ./boot-gz.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-gz.img
-
-          echo "Building boot-lz4.img"
-          $MKBOOTIMG --header_version 4 --kernel Image.lz4 --output boot-lz4.img --ramdisk out/ramdisk --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
-          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-          cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
-
-      - name: 运行boot镜像 ${{ inputs.android_version }} 编译脚本
-        if: ${{ inputs.android_version == 'android13' || inputs.android_version == 'android14' || inputs.android_version == 'android15' }}
-        run: |
-          cd bootimgs
-
-          echo "Building Image.gz"
-          gzip -n -k -f -9 ./Image > ./Image.gz
-
-          echo "Building boot.img"
-          $MKBOOTIMG --header_version 4 --kernel Image --output boot.img
-          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-          cp ./boot.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img
-
-          echo "Building boot-gz.img"
-          $MKBOOTIMG --header_version 4 --kernel Image.gz --output boot-gz.img
-          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-gz.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-          cp ./boot-gz.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-gz.img
-
-          echo "Building boot-lz4.img"
-          $MKBOOTIMG --header_version 4 --kernel Image.lz4 --output boot-lz4.img
-          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-          cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
+              VARIANT_STR="$VARIANT"
+              ;;
+          esac
+          echo "Variant name: $VARIANT_STR"
+          echo "Version number: $SUKI_VER"
+          cd ./AnyKernel3
+          rm -f Image Image.lz4 Image.gz
+          cp ../Image ./Image
+          ZIP_NAME="AnyKernel3_${VARIANT_STR}_${SUKI_VER}_${{ inputs.kernel_version }}-${{ inputs.sub_level }}.zip"
+          echo "Creating zip file: $ZIP_NAME..."
+          zip -r "../$ZIP_NAME" ./
 
       - name: 上传编译资产
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.kernelsu_variant }}_kernel-${{ env.CONFIG }}
           path: |
-            *AnyKernel3.zip
+            *.zip
             *.img
