@@ -113,34 +113,71 @@ jobs:
 
           echo "Parsed: AV=$av, KV=$kv, SL=$sl, OPL=$opl, REV=$rev"
 
-      - name: Generate Kernel Local Version Suffix
-        id: generate_local_version
+      - name: Generate Kernel Suffixes (for Kernel Name and Artifact Name)
+        id: generate_suffixes
         env:
           USER_PROVIDED_SUFFIX: ${{ github.event.inputs.custom_version_suffix }}
           SELECTED_AV_ENV: ${{ env.SELECTED_ANDROID_VERSION }}
           SELECTED_KV_ENV: ${{ env.SELECTED_KERNEL_VERSION }}
         run: |
-          local_version_suffix=""
+          final_kernel_local_version=""
+          artifact_name_suffix_part=""
+          current_date=$(date +%Y%m%d) # 例如：20250513
+
           if [[ -n "$USER_PROVIDED_SUFFIX" ]]; then
-            local_version_suffix="$USER_PROVIDED_SUFFIX"
+            # 如果用户提供了自定义后缀，则它同时用于内核名和文件名后缀部分
+            final_kernel_local_version="$USER_PROVIDED_SUFFIX"
+            # 对于文件名，如果用户自定义了，我们假设他们也控制了日期（如果需要的话）
+            # 或者，我们可以选择总是给用户提供的后缀（用于文件名时）加上日期，例如：
+            # artifact_name_suffix_part="${USER_PROVIDED_SUFFIX}.${current_date}"
+            # 但为了简单和给予用户完全控制，我们暂时让它们一致：
+            artifact_name_suffix_part="$USER_PROVIDED_SUFFIX"
+            echo "使用用户提供的自定义后缀 (内核名): $final_kernel_local_version"
+            echo "使用用户提供的自定义后缀 (文件名): $artifact_name_suffix_part"
           else
-            kernel_name_part_for_random_suffix=""
-            # Construct a base part for the random suffix based on the selected kernel
-            # This mimics the logic from your original 'prepare_versions' job for the fixed part
-            if [ "$SELECTED_AV_ENV" == "android12" ] && [ "$SELECTED_KV_ENV" == "5.10" ]; then kernel_name_part_for_random_suffix="-android12-9-$(date +%Y%m%d)";
-            elif [ "$SELECTED_AV_ENV" == "android13" ] && [ "$SELECTED_KV_ENV" == "5.10" ]; then kernel_name_part_for_random_suffix="-android13-9-$(date +%Y%m%d)";
-            elif [ "$SELECTED_AV_ENV" == "android13" ] && [ "$SELECTED_KV_ENV" == "5.15" ]; then kernel_name_part_for_random_suffix="-android13-8-$(date +%Y%m%d)";
-            elif [ "$SELECTED_AV_ENV" == "android14" ] && [ "$SELECTED_KV_ENV" == "6.1" ]; then kernel_name_part_for_random_suffix="-android14-11-$(date +%Y%m%d)";
-            elif [ "$SELECTED_AV_ENV" == "android15" ] && [ "$SELECTED_KV_ENV" == "6.6" ]; then kernel_name_part_for_random_suffix="-android15-8-$(date +%Y%m%d)";
-            else # Fallback for unlisted combinations
-              kernel_name_part_for_random_suffix="-${SELECTED_AV_ENV}-${SELECTED_KV_ENV//./_}-$(date +%Y%m%d)"
+            # 用户未提供后缀，生成随机后缀
+            kernel_fixed_part_for_localversion="" # 用于内核名，包含 androidXX
+            kernel_id_tag_for_filename=""         # 用于文件名，仅包含核心标识符 (如 "9", "11")
+
+            # 根据选择的内核确定固定前缀和标识符
+            if [ "$SELECTED_AV_ENV" == "android12" ] && [ "$SELECTED_KV_ENV" == "5.10" ]; then
+              kernel_fixed_part_for_localversion="-android12-9"
+              kernel_id_tag_for_filename="9"
+            elif [ "$SELECTED_AV_ENV" == "android13" ] && [ "$SELECTED_KV_ENV" == "5.10" ]; then
+              kernel_fixed_part_for_localversion="-android13-9"
+              kernel_id_tag_for_filename="9"
+            elif [ "$SELECTED_AV_ENV" == "android13" ] && [ "$SELECTED_KV_ENV" == "5.15" ]; then
+              kernel_fixed_part_for_localversion="-android13-8"
+              kernel_id_tag_for_filename="8"
+            elif [ "$SELECTED_AV_ENV" == "android14" ] && [ "$SELECTED_KV_ENV" == "6.1" ]; then
+              kernel_fixed_part_for_localversion="-android14-11"
+              kernel_id_tag_for_filename="11"
+            elif [ "$SELECTED_AV_ENV" == "android15" ] && [ "$SELECTED_KV_ENV" == "6.6" ]; then
+              kernel_fixed_part_for_localversion="-android15-8"
+              kernel_id_tag_for_filename="8"
+            else # 回退机制
+              kernel_fixed_part_for_localversion="-${SELECTED_AV_ENV}-${SELECTED_KV_ENV//./_}-custom" # 内核名后缀仍带安卓版本
+              kernel_id_tag_for_filename="kcustom" # 文件名用简短标识
             fi
 
-            random_hex=$(head /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 7 || true)
-            local_version_suffix="${kernel_name_part_for_random_suffix}-${random_hex}"
+            prefix1="gd"
+            prefix2="ab"
+            random_hex_11=$(head /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 11 || true)
+            random_digits_8=$(head /dev/urandom | LC_ALL=C tr -dc '0-9' | head -c 8 || true)
+
+            # 1. 内核名后缀 (for setlocalversion, uname -r)
+            # 格式: -[安卓特定前缀]-gd[11位哈希]-ab[8位数字] (不含日期)
+            final_kernel_local_version="${kernel_fixed_part_for_localversion}-${prefix1}${random_hex_11}-${prefix2}${random_digits_8}"
+            echo "生成的内核名后缀 (for setlocalversion): $final_kernel_local_version"
+
+            # 2. 文件名后缀部分
+            # 格式: -[标识符]-[日期]-gd[11位哈希]-ab[8位数字] (不含 "androidXX", 但含日期)
+            artifact_name_suffix_part="-${kernel_id_tag_for_filename}-${current_date}-${prefix1}${random_hex_11}-${prefix2}${random_digits_8}"
+            echo "生成的文件名后缀部分: $artifact_name_suffix_part"
           fi
-          echo "FINAL_KERNEL_LOCAL_VERSION=${local_version_suffix}" >> "$GITHUB_ENV"
-          echo "Using kernel local version suffix: $local_version_suffix"
+
+          echo "FINAL_KERNEL_LOCAL_VERSION=${final_kernel_local_version}" >> "$GITHUB_ENV"
+          echo "ARTIFACT_NAME_SUFFIX_PART=${artifact_name_suffix_part}" >> "$GITHUB_ENV"
 
       - name: Adjust KPM setting
         run: |
