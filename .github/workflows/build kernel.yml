@@ -12,7 +12,6 @@ on:
         required: true
         type: choice
         options:
-          # Android 12 (5.10)
           - "android12_5.10_168_2023-04_r9"
           - "android12_5.10_198_2024-01_r17"
           - "android12_5.10_205_2024-03_r9"
@@ -21,7 +20,6 @@ on:
           - "android12_5.10_226_2024-11_r8"
           - "android12_5.10_233_2025-02_r1"
           - "android12_5.10_X_lts_r1"
-          # Android 13 (5.10)
           - "android13_5.10_198_2024-01_"
           - "android13_5.10_205_2024-03_"
           - "android13_5.10_209_2024-05_"
@@ -30,7 +28,6 @@ on:
           - "android13_5.10_223_2024-11_"
           - "android13_5.10_228_2025-01_"
           - "android13_5.10_X_lts_"
-          # Android 13 (5.15)
           - "android13_5.15_123_2023-11_"
           - "android13_5.15_137_2024-01_"
           - "android13_5.15_144_2024-03_"
@@ -39,10 +36,7 @@ on:
           - "android13_5.15_167_2024-11_"
           - "android13_5.15_170_2025-01_"
           - "android13_5.15_X_lts_"
-          # Android 14 (6.1)
           - "android14_6.1_75_2024-05_"
-          # (Add other A14 6.1 versions here if they were un-commented in your original files)
-          # Android 15 (6.6)
           - "android15_6.6_50_2024-10_"
           - "android15_6.6_56_2024-11_"
           - "android15_6.6_57_2024-12_"
@@ -50,7 +44,7 @@ on:
           - "android15_6.6_66_2025-02_"
           - "android15_6.6_77_2025-03_"
           - "android15_6.6_X_lts_"
-        default: "android14_6.1_75_2024-05_" # Default to a common A14 build
+        default: "android14_6.1_75_2024-05_"
 
       kernelsu_variant:
         description: "选择 KernelSU 变体"
@@ -69,7 +63,7 @@ on:
         options:
           - Stable(标准)
           - Dev(开发)
-          - Other(其他/指定) # Note: 'Other' might require manual code adjustment for branch name if not covered by logic
+          - Other(其他/指定)
         default: Dev(开发)
       custom_version_suffix:
         description: '自定义内核版本后缀 (留空则随机生成)'
@@ -94,8 +88,6 @@ jobs:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
-      # MAKE_RELEASE will be treated as false, as per original multi-file setup
-      # where intermediate files passed `make_release: false`
 
     steps:
       - name: Parse Kernel Selection and Set Parameters
@@ -106,12 +98,8 @@ jobs:
           echo "SELECTED_KERNEL_VERSION=$kv" >> $GITHUB_ENV
           echo "SELECTED_SUB_LEVEL=$sl" >> $GITHUB_ENV
           echo "SELECTED_OS_PATCH_LEVEL=$opl" >> $GITHUB_ENV
-
-          # Handle potentially empty revision
-          rev="${rev_raw:-}" # Use bash default to empty string if rev_raw is unset or null
+          rev="${rev_raw:-}"
           echo "SELECTED_REVISION=$rev" >> $GITHUB_ENV
-
-          echo "Parsed: AV=$av, KV=$kv, SL=$sl, OPL=$opl, REV=$rev"
 
       - name: Generate Kernel Suffixes (for Kernel Name and Artifact Name)
         id: generate_suffixes
@@ -159,10 +147,8 @@ jobs:
 
       - name: Adjust KPM setting
         run: |
-          # KPM is explicitly disabled for A15-6.6 in the original kernel-a15-6.6.yml, overriding user input
           if [[ "${{ env.SELECTED_ANDROID_VERSION }}" == "android15" && "${{ env.SELECTED_KERNEL_VERSION }}" == "6.6" ]]; then
             echo "EFFECTIVE_USE_KPM=false" >> $GITHUB_ENV
-            echo "KPM explicitly disabled for Android 15 (6.6) build."
           else
             echo "EFFECTIVE_USE_KPM=${{ github.event.inputs.use_kpm }}" >> $GITHUB_ENV
           fi
@@ -180,11 +166,8 @@ jobs:
 
       - name: 设定 CONFIG 环境变量
         run: |
-          # Set CONFIG dynamically based on parsed values
           JOB_CONFIG="${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}-${{ env.SELECTED_SUB_LEVEL }}"
-          # Set CONFIG as an environment variable for future steps
           echo "CONFIG=$JOB_CONFIG" >> $GITHUB_ENV
-          echo "CONFIG set to: $JOB_CONFIG"
 
       - name: 安装 ccache
         run: sudo apt update && sudo apt upgrade -y && sudo apt install -y ccache python3 git curl
@@ -218,7 +201,7 @@ jobs:
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
           AOSP_MIRROR=https://android.googlesource.com
-          BRANCH=main-kernel-build-2024 # Or your preferred branch
+          BRANCH=main-kernel-build-2024
           git clone $AOSP_MIRROR/kernel/prebuilts/build-tools -b $BRANCH --depth 1 kernel-build-tools
           git clone $AOSP_MIRROR/platform/system/tools/mkbootimg -b $BRANCH --depth 1 mkbootimg
 
@@ -244,170 +227,111 @@ jobs:
 
       - name: 克隆 AnyKernel3 和其他依赖项
         run: |
-          echo "Cloning AnyKernel3 and other dependencies..."
-          ANYKERNEL_BRANCH="gki-2.0" # Or your preferred branch
+          ANYKERNEL_BRANCH="gki-2.0"
           SUSFS_BRANCH="gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}"
-
-          echo "Using branch for SUSFS: $SUSFS_BRANCH"
           git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" || \
-            (echo "Failed to clone SUSFS branch $SUSFS_BRANCH, trying fallback"; git clone https://gitlab.com/simonpunk/susfs4ksu.git -b main) # Fallback if specific branch fails
+            (git clone https://gitlab.com/simonpunk/susfs4ksu.git -b main)
           git clone https://github.com/WildPlusKernel/kernel_patches.git
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
 
       - name: 初始化和同步内核源代码
         run: |
-          echo "Creating folder for configuration: ${{ env.CONFIG }}..."
           mkdir -p "${{ env.CONFIG }}"
           cd "${{ env.CONFIG }}"
-
-          echo "Initializing and syncing kernel source..."
           FORMATTED_BRANCH="${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}-${{ env.SELECTED_OS_PATCH_LEVEL }}"
-          # Ensure REPO path is correct
           $REPO init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-${FORMATTED_BRANCH} --repo-rev=v2.16
-
           REMOTE_BRANCH=$(git ls-remote https://android.googlesource.com/kernel/common ${FORMATTED_BRANCH})
           DEFAULT_MANIFEST_PATH=.repo/manifests/default.xml
-
           if grep -q deprecated <<< "$REMOTE_BRANCH"; then
-            echo "Found deprecated branch: $FORMATTED_BRANCH"
             sed -i "s/\"${FORMATTED_BRANCH}\"/\"deprecated\/${FORMATTED_BRANCH}\"/g" $DEFAULT_MANIFEST_PATH
           fi
-
-          $REPO --version
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
 
       - name: 确定 KernelSU 的分支
         run: |
-          KSU_SETUP_BRANCH_ARG="" # Default to no specific branch for setup.sh (implies stable for some scripts)
+          KSU_SETUP_BRANCH_ARG=""
           if [[ "${{ github.event.inputs.kernelsu_branch }}" == "Stable(标准)" ]]; then
-            KSU_SETUP_BRANCH_ARG="" # Typically means stable/main for setup scripts
+            KSU_SETUP_BRANCH_ARG=""
           elif [[ "${{ github.event.inputs.kernelsu_branch }}" == "Dev(开发)" ]]; then
             if [[ "${{ github.event.inputs.kernelsu_variant }}" == "Official" || "${{ github.event.inputs.kernelsu_variant }}" == "MKSU" ]]; then
-              KSU_SETUP_BRANCH_ARG="-s main" # Official/MKSU dev often points to main of their repo
+              KSU_SETUP_BRANCH_ARG="-s main"
             elif [[ "${{ github.event.inputs.kernelsu_variant }}" == "Next" ]]; then
               KSU_SETUP_BRANCH_ARG="-s next"
             elif [[ "${{ github.event.inputs.kernelsu_variant }}" == "SukiSU" ]]; then
-              KSU_SETUP_BRANCH_ARG="-s susfs-dev" # Or relevant dev branch for SukiSU
+              KSU_SETUP_BRANCH_ARG="-s susfs-dev"
             fi
           elif [[ "${{ github.event.inputs.kernelsu_branch }}" == "Other(其他/指定)" ]]; then
-            # IMPORTANT: For 'Other', you must manually provide the branch logic or expect a specific format
-            # For now, this will likely fail or use default behavior of setup.sh if not handled
-            echo "Warning: 'Other(其他/指定)' KSU branch selected. Ensure your KernelSU setup script handles this or modify this step."
-            # Potentially, you could add another input for the custom branch name if 'Other' is chosen.
-            # KSU_SETUP_BRANCH_ARG="-s ${{ inputs.custom_ksu_branch_name }}" # Example if you add such an input
-            echo "Error: Custom branch for 'Other(其他/指定)' not implemented in this script yet." >&2
-            # exit 1 # Or allow to proceed with default setup.sh behavior
+            echo "Error: Custom branch for 'Other(其他/指定)' not implemented." >&2
           fi
           echo "KSU_BRANCH_ARG=${KSU_SETUP_BRANCH_ARG}" >> $GITHUB_ENV
-          echo "KernelSU setup script branch argument will be: '${KSU_SETUP_BRANCH_ARG}'"
 
       - name: 添加 KernelSU
         run: |
-          echo "Changing to configuration directory: ${{ env.CONFIG }}..."
           cd "${{ env.CONFIG }}"
-
           if [ "${{ github.event.inputs.kernelsu_variant }}" == "Official" ]; then
-            echo "Adding KernelSU Official..."
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash ${{ env.KSU_BRANCH_ARG }}
           elif [ "${{ github.event.inputs.kernelsu_variant }}" == "Next" ]; then
-            echo "Adding KernelSU Next..."
             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash ${{ env.KSU_BRANCH_ARG }}
           elif [ "${{ github.event.inputs.kernelsu_variant }}" == "MKSU" ]; then
-            echo "Adding KernelSU MKSU..."
             curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh" | bash ${{ env.KSU_BRANCH_ARG }}
           elif [ "${{ github.event.inputs.kernelsu_variant }}" == "SukiSU" ]; then
-            echo "Adding KernelSU SukiSU..."
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash ${{ env.KSU_BRANCH_ARG }}
           fi
 
       - name: 获取 SukiSU 版本号
         if: github.event.inputs.kernelsu_variant == 'SukiSU'
         shell: bash
-        working-directory: ./${{ env.CONFIG }} # 确保当前工作目录是 ${{ env.CONFIG }}
+        working-directory: ./${{ env.CONFIG }}
         run: |
-          echo "正在获取 SukiSU 版本号..."
-          SUKI_DIR="./KernelSU" # KernelSU 的源码目录，相对于 ${{ env.CONFIG }}
-          SUKI_VERSION_NUM=""
+          SUKI_DIR="./KernelSU"
+          SUKI_VERSION_NUM="00000" 
           if [ -d "$SUKI_DIR/.git" ]; then
-            cd "$SUKI_DIR" # 进入 KernelSU 源码目录 ($CONFIG/KernelSU)
-            
-            # 恢复原始的正确分支检查顺序来计算 COMMIT_COUNT
+            cd "$SUKI_DIR"
             COMMIT_COUNT=$(git rev-list --count main 2>/dev/null || git rev-list --count master 2>/dev/null || git rev-list --count susfs-dev 2>/dev/null || echo 0)
-            
             if [ "$COMMIT_COUNT" -ne "0" ]; then
               SUKI_VERSION_NUM=$(expr $COMMIT_COUNT + 10606)
-              echo "SukiSU 版本号计算成功: $SUKI_VERSION_NUM"
-            else
-              echo "警告: 在 $PWD (原 $SUKI_DIR) 中未能正确统计 git 提交数 (main/master/susfs-dev)。将使用默认值00000。"
-              SUKI_VERSION_NUM="00000"
             fi
-            cd .. # 返回到 $CONFIG 目录
-          else
-            echo "警告: SukiSU 的 .git 目录 ($PWD/$SUKI_DIR/.git) 未找到。将使用默认值00000。"
-            SUKI_VERSION_NUM="00000"
+            cd .. 
           fi
           echo "SUKI_VERSION_NUM=$SUKI_VERSION_NUM" >> $GITHUB_ENV
 
       - name: 为 KernelSU 变体安装 SUSFS 补丁
         working-directory: ./${{ env.CONFIG }}
         run: |
-          echo "Applying SUSFS patches..."
-          # Copy SUSFS patches to common
-          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch ./common/ || echo "SUSFS common patch copy failed, continuing"
+          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch ./common/ || echo "SUSFS common patch copy failed"
           cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/ || echo "SUSFS fs dir copy failed"
           cp -r ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/ || echo "SUSFS include dir copy failed"
 
-          KSU_SUBDIR="KernelSU" # Default directory name for KSU sources after setup.sh
+          KSU_SUBDIR="KernelSU"
           if [ "${{ github.event.inputs.kernelsu_variant }}" == "Next" ]; then
             KSU_SUBDIR="KernelSU-Next"
           fi
-          # SukiSU uses "KernelSU" as directory name
 
           if [ -d "./$KSU_SUBDIR" ]; then
-            cd "./$KSU_SUBDIR" # Enter KSU source directory
-
+            cd "./$KSU_SUBDIR"
             if [ "${{ github.event.inputs.kernelsu_variant }}" == "Official" ]; then
-              echo "Applying SUSFS patches for Official KernelSU..."
               cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
               patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || echo "Official KSU SUSFS patch failed"
             elif [ "${{ github.event.inputs.kernelsu_variant }}" == "Next" ]; then
-              echo "Applying SUSFS patches for KernelSU-Next..."
               cp ../../kernel_patches/next/kernel-patch-susfs-v1.5.7-to-KernelSU-Next.patch ./
               patch -p1 --forward --fuzz=3 < kernel-patch-susfs-v1.5.7-to-KernelSU-Next.patch || echo "Next KSU SUSFS patch failed"
             elif [ "${{ github.event.inputs.kernelsu_variant }}" == "MKSU" ]; then
-              echo "Applying SUSFS patches for MKSU..."
               cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true # Allow failure as per original
-
-              echo "Applying MKSU specific SUSFS patch..."
+              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
               cp ../../kernel_patches/mksu/mksu_susfs.patch ./
               patch -p1 < mksu_susfs.patch || true
               cp ../../kernel_patches/mksu/fix.patch ./
               patch -p1 < fix.patch || true
-            elif [ "${{ github.event.inputs.kernelsu_variant }}" == "SukiSU" ]; then
-              # SukiSU might have its own SUSFS integration or specific patches
-              echo "Applying SUSFS patches for SukiSU (if any specific ones needed here)..."
-              # No specific patches listed for SukiSU in this block in the original, assuming its setup handles it or it's part of the common patch.
-            else
-              echo "Invalid KernelSU variant selected for SUSFS patching!"
-              # exit 1 # Or just warn
             fi
-            cd .. # Back to $CONFIG directory
-          else
-            echo "Warning: KernelSU source directory '$KSU_SUBDIR' not found in $PWD. Skipping KSU-specific SUSFS patches."
+            cd .. 
           fi
-
-          cd ./common # Apply common GKI patch
+          cd ./common 
           if [ -f "./50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch" ]; then
             patch -p1 --fuzz=3 < 50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch || true
-          else
-            echo "Warning: Common SUSFS GKI patch not found. Skipping."
           fi
-
           FORMATTED_BRANCH_FOR_FIX="${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}-${{ env.SELECTED_OS_PATCH_LEVEL }}"
           if [ "$FORMATTED_BRANCH_FOR_FIX" == "android15-6.6-2024-08" ] || [ "$FORMATTED_BRANCH_FOR_FIX" == "android15-6.6-2024-09" ]; then
-            echo "Applying fix 6.6.30 & 6.6.46 patches for $FORMATTED_BRANCH_FOR_FIX"
             curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/fix/fix6.6.patch -o test.patch
             patch -p1 < test.patch || true
           fi
@@ -416,11 +340,9 @@ jobs:
         working-directory: ./${{ env.CONFIG }}/common
         run: |
           if [ "${{ github.event.inputs.kernelsu_variant }}" == "Next" ]; then
-            echo "Applying hooks for KernelSU-Next..."
             cp ../../kernel_patches/next/syscall_hooks.patch ./
             patch -p1 -F 3 < syscall_hooks.patch || echo "Next hooks patch failed"
           elif [ "${{ github.event.inputs.kernelsu_variant }}" == "SukiSU" ]; then
-            echo "Applying hooks for SukiSU..."
             cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
             patch -p1 -F 3 < syscall_hooks.patch || echo "SukiSU hooks patch failed"
           fi
@@ -429,33 +351,19 @@ jobs:
         if: ${{ github.event.inputs.use_zram == 'true' }}
         working-directory: ./${{ env.CONFIG }}/common
         run: |
-          echo "Copying ZRAM source files and applying patches..."
-          # LZ4K sources
           cp -r ../../SukiSU_patch/other/zram/lz4k/include/linux/* ./include/linux/ || echo "lz4k include copy failed"
           cp -r ../../SukiSU_patch/other/zram/lz4k/lib/* ./lib/ || echo "lz4k lib copy failed"
           cp -r ../../SukiSU_patch/other/zram/lz4k/crypto/* ./crypto/ || echo "lz4k crypto copy failed"
           cp -r ../../SukiSU_patch/other/zram/lz4k_oplus ./lib/ || echo "lz4k_oplus copy failed"
-
-          # LZ4KD patch
           LZ4KD_PATCH_PATH="../../SukiSU_patch/other/zram/zram_patch/${{ env.SELECTED_KERNEL_VERSION }}/lz4kd.patch"
           if [ -f "$LZ4KD_PATCH_PATH" ]; then
-            cp "$LZ4KD_PATCH_PATH" ./
-            echo "正在打lz4kd补丁 for kernel ${{ env.SELECTED_KERNEL_VERSION }}"
+            cp "$LZ4KD_PATCH_PATH" ./lz4kd.patch 
             patch -p1 -F 3 < lz4kd.patch || true
-            echo '完成LZ4KD补丁'
-          else
-            echo "LZ4KD patch not found for kernel ${{ env.SELECTED_KERNEL_VERSION }} at $LZ4KD_PATCH_PATH"
           fi
-
-          # LZ4K_OPLUS patch
           LZ4K_OPLUS_PATCH_PATH="../../SukiSU_patch/other/zram/zram_patch/${{ env.SELECTED_KERNEL_VERSION }}/lz4k_oplus.patch"
           if [ -f "$LZ4K_OPLUS_PATCH_PATH" ]; then
-            cp "$LZ4K_OPLUS_PATCH_PATH" ./
-            echo "正在打lz4k_oplus补丁 for kernel ${{ env.SELECTED_KERNEL_VERSION }}"
+            cp "$LZ4K_OPLUS_PATCH_PATH" ./lz4k_oplus.patch 
             patch -p1 -F 3 < lz4k_oplus.patch || true
-            echo '完成lz4k_oplus补丁'
-          else
-            echo "lz4k_oplus patch not found for kernel ${{ env.SELECTED_KERNEL_VERSION }} at $LZ4K_OPLUS_PATCH_PATH"
           fi
 
       - name: 应用隐藏某特征的补丁
@@ -467,28 +375,22 @@ jobs:
           else
             PATCH_FILE="../../kernel_patches/69_hide_stuff.patch"
           fi
-
           if [ -f "$PATCH_FILE" ]; then
             cp "$PATCH_FILE" ./hide_stuff.patch
-            patch -p1 -F 3 < hide_stuff.patch || echo "Hide stuff patch failed or not applicable"
-          else
-            echo "Hide stuff patch file not found at $PATCH_FILE"
+            patch -p1 -F 3 < hide_stuff.patch || echo "Hide stuff patch failed"
           fi
 
       - name: LZ4KD&Lz4k_oplus配置
         if: ${{ github.event.inputs.use_zram == 'true' }}
         run: |
-          echo "写入LZ4KD&ZSTDN config依赖"
           CONFIG_FILE_PATH="${{ env.CONFIG }}/common/arch/arm64/configs/gki_defconfig"
-
           if [ "${{ env.SELECTED_KERNEL_VERSION }}" = "5.10" ]; then
             echo "CONFIG_ZSMALLOC=y" >> "$CONFIG_FILE_PATH"
             echo "CONFIG_ZRAM=y" >> "$CONFIG_FILE_PATH"
-            echo "CONFIG_MODULE_SIG=n" >> "$CONFIG_FILE_PATH" # As per original
-            echo "CONFIG_CRYPTO_LZO=y" >> "$CONFIG_FILE_PATH" # As per original
-            echo "CONFIG_ZRAM_DEF_COMP_LZ4KD=y" >> "$CONFIG_FILE_PATH" # As per original
+            echo "CONFIG_MODULE_SIG=n" >> "$CONFIG_FILE_PATH"
+            echo "CONFIG_CRYPTO_LZO=y" >> "$CONFIG_FILE_PATH"
+            echo "CONFIG_ZRAM_DEF_COMP_LZ4KD=y" >> "$CONFIG_FILE_PATH"
           fi
-
           if [ "${{ env.SELECTED_KERNEL_VERSION }}" != "6.6" ] && [ "${{ env.SELECTED_KERNEL_VERSION }}" != "5.10" ]; then
             if grep -q "CONFIG_ZSMALLOC" -- "$CONFIG_FILE_PATH"; then
               sed -i 's/CONFIG_ZSMALLOC=m/CONFIG_ZSMALLOC=y/g' "$CONFIG_FILE_PATH"
@@ -497,33 +399,22 @@ jobs:
             fi
             sed -i 's/CONFIG_ZRAM=m/CONFIG_ZRAM=y/g' "$CONFIG_FILE_PATH"
           fi
-
           if [ "${{ env.SELECTED_KERNEL_VERSION }}" = "6.6" ]; then
             echo "CONFIG_ZSMALLOC=y" >> "$CONFIG_FILE_PATH"
             sed -i 's/CONFIG_ZRAM=m/CONFIG_ZRAM=y/g' "$CONFIG_FILE_PATH"
           fi
-
-          # Module handling for zram/zsmalloc
           if [ "${{ env.SELECTED_ANDROID_VERSION }}" = "android14" ] || [ "${{ env.SELECTED_ANDROID_VERSION }}" = "android15" ]; then
-            # For Bazel builds (typically A14+)
             if [ -f "${{ env.CONFIG }}/common/modules.bzl" ]; then
               sed -i 's/"drivers\/block\/zram\/zram\.ko",//g; s/"mm\/zsmalloc\.ko",//g' "${{ env.CONFIG }}/common/modules.bzl"
-              echo 'Android14/15_Bazel: 已尝试修复zram&zsmalloc in modules.bzl'
-            else
-               echo "Warning: modules.bzl not found for ${{ env.SELECTED_ANDROID_VERSION }}, skipping zram/zsmalloc Bazel fix."
             fi
-            echo "CONFIG_MODULE_SIG_FORCE=n" >> "$CONFIG_FILE_PATH" # As per original
+            echo "CONFIG_MODULE_SIG_FORCE=n" >> "$CONFIG_FILE_PATH"
           elif [ "${{ env.SELECTED_KERNEL_VERSION }}" = "5.10" ] || [ "${{ env.SELECTED_KERNEL_VERSION }}" = "5.15" ]; then
-            # For older build systems
             GKI_MODULES_FILE="${{ env.CONFIG }}/common/android/gki_aarch64_modules"
             if [ -f "$GKI_MODULES_FILE" ]; then
-              rm "$GKI_MODULES_FILE" # Remove to rebuild or ensure it's empty
+              rm "$GKI_MODULES_FILE"
             fi
-            touch "$GKI_MODULES_FILE" # Create if not exists, or ensure it's an empty file
-            echo 'Kernel 5.10/5.15: 已尝试修复zram&zsmalloc by managing gki_aarch64_modules'
+            touch "$GKI_MODULES_FILE"
           fi
-
-          # Common crypto options if ZRAM is enabled
           if grep -q "CONFIG_ZSMALLOC=y" "$CONFIG_FILE_PATH" && grep -q "CONFIG_ZRAM=y" "$CONFIG_FILE_PATH"; then
             echo "CONFIG_CRYPTO_LZ4HC=y" >> "$CONFIG_FILE_PATH"
             echo "CONFIG_CRYPTO_LZ4K=y" >> "$CONFIG_FILE_PATH"
@@ -535,69 +426,41 @@ jobs:
       - name: 添加所有管理器 (Manager Patch)
         working-directory: ./${{ env.CONFIG }}
         run: |
-          # This step seems to copy a manager.patch into $CONFIG and then apply it from there
-          # Ensure the patch is variant-specific if needed.
-          # Original logic was a bit ambiguous about where manager.patch came from for each variant.
-          # Assuming kernel_patches has specific manager patches if needed.
           MANAGER_PATCH_SOURCE=""
-          KSU_DIR_FOR_MANAGER="KernelSU" # Default KSU source dir
+          KSU_DIR_FOR_MANAGER="KernelSU" 
           if [ "${{ github.event.inputs.kernelsu_variant }}" == "Next" ]; then
             KSU_DIR_FOR_MANAGER="KernelSU-Next"
-            MANAGER_PATCH_SOURCE="../kernel_patches/next/manager.patch" # Specific to Next
-          elif [ "${{ github.event.inputs.kernelsu_variant }}" == "Official" ]; then
-            # MANAGER_PATCH_SOURCE="../kernel_patches/ksu/manager.patch" # Example if exists
-            echo "No specific manager patch defined for Official KSU in this script."
-          elif [ "${{ github.event.inputs.kernelsu_variant }}" == "MKSU" ]; then
-            # MANAGER_PATCH_SOURCE="../kernel_patches/mksu/manager.patch" # Example if exists
-            echo "No specific manager patch defined for MKSU in this script."
-          elif [ "${{ github.event.inputs.kernelsu_variant }}" == "SukiSU" ]; then
-             echo "No specific manager patch defined for SukiSU in this script."
+            MANAGER_PATCH_SOURCE="../kernel_patches/next/manager.patch"
           fi
-
           if [[ -n "$MANAGER_PATCH_SOURCE" && -f "$MANAGER_PATCH_SOURCE" ]]; then
             if [ -d "./$KSU_DIR_FOR_MANAGER" ]; then
-              echo "Applying Manager patch for ${{ github.event.inputs.kernelsu_variant }} from $MANAGER_PATCH_SOURCE to ./$KSU_DIR_FOR_MANAGER/"
               cp "$MANAGER_PATCH_SOURCE" "./$KSU_DIR_FOR_MANAGER/"
               cd "./$KSU_DIR_FOR_MANAGER"
-              patch -p1 --fuzz=3 < manager.patch || echo "Manager patch application failed for $KSU_DIR_FOR_MANAGER"
-              cd .. # Back to $CONFIG
-            else
-              echo "Warning: KSU directory ./$KSU_DIR_FOR_MANAGER not found, cannot apply manager patch."
+              patch -p1 --fuzz=3 < manager.patch || echo "Manager patch application failed"
+              cd .. 
             fi
-          elif [[ -n "$MANAGER_PATCH_SOURCE" ]]; then
-            echo "Warning: Manager patch source file $MANAGER_PATCH_SOURCE not found."
           fi
-          # Generic patch attempt in $CONFIG as fallback or general patch (original behavior)
-          if [ -f "./manager.patch" ]; then # If a manager.patch was somehow placed in $CONFIG directly
-             echo "Attempting to apply a manager.patch found in ${{ env.CONFIG }}"
-             patch -p1 --fuzz=3 < manager.patch || echo "General manager.patch in ${{ env.CONFIG }} failed or not found"
+          if [ -f "./manager.patch" ]; then 
+             patch -p1 --fuzz=3 < manager.patch || echo "General manager.patch failed"
           fi
 
       - name: 添加SUSFS配置设置
         run: |
-          echo "Adding configuration settings to gki_defconfig..."
           GKI_DEFCONFIG_PATH="${{ env.CONFIG }}/common/arch/arm64/configs/gki_defconfig"
           BUILD_CONFIG_GKI_PATH="${{ env.CONFIG }}/common/build.config.gki"
-
           echo "CONFIG_KSU=y" >> "$GKI_DEFCONFIG_PATH"
-
           if [ "${{ github.event.inputs.kernelsu_variant }}" == "Next" ]; then
             echo "CONFIG_KSU_WITH_KPROBES=n" >> "$GKI_DEFCONFIG_PATH"
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$GKI_DEFCONFIG_PATH"
           elif [ "${{ github.event.inputs.kernelsu_variant }}" == "SukiSU" ]; then
-            # KPM config should be driven by EFFECTIVE_USE_KPM
             if [[ "${{ env.EFFECTIVE_USE_KPM }}" == "true" ]]; then
                 echo "CONFIG_KPM=y" >> "$GKI_DEFCONFIG_PATH"
-            else
-                echo "# CONFIG_KPM is not set (KPM disabled for this build)" >> "$GKI_DEFCONFIG_PATH"
             fi
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$GKI_DEFCONFIG_PATH"
             echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$GKI_DEFCONFIG_PATH"
           elif [ "${{ github.event.inputs.kernelsu_variant }}" == "MKSU" ]; then
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$GKI_DEFCONFIG_PATH"
           fi
-
-          # Common SUSFS and other settings
           echo "CONFIG_TMPFS_XATTR=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$GKI_DEFCONFIG_PATH"
@@ -609,13 +472,9 @@ jobs:
           echo "CONFIG_TCP_CONG_BIC=n" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_TCP_CONG_HTCP=n" >> "$GKI_DEFCONFIG_PATH"
-
           if [ -f "$BUILD_CONFIG_GKI_PATH" ]; then
             sed -i 's/check_defconfig//' "$BUILD_CONFIG_GKI_PATH"
-          else
-            echo "Warning: $BUILD_CONFIG_GKI_PATH not found, cannot remove check_defconfig."
           fi
-
           echo "CONFIG_KSU_SUSFS=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$GKI_DEFCONFIG_PATH"
@@ -627,7 +486,7 @@ jobs:
           echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$GKI_DEFCONFIG_PATH" # Consider making this conditional for debug
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$GKI_DEFCONFIG_PATH" 
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$GKI_DEFCONFIG_PATH"
@@ -635,63 +494,57 @@ jobs:
       - name: 配置内核名称和编译时间戳
         working-directory: ./${{ env.CONFIG }}
         run: |
-          if [ ! -z "${{ env.FINAL_KERNEL_LOCAL_VERSION }}" ]; then
-            echo "版本号后缀 (FINAL_KERNEL_LOCAL_VERSION) 不为空, setting in setlocalversion: ${{ env.FINAL_KERNEL_LOCAL_VERSION }}"
-            # Ensure the replacement targets the correct line and pattern
-            sed -i 's/^res=.*/res="${{ env.FINAL_KERNEL_LOCAL_VERSION }}"/' ./common/scripts/setlocalversion || \
-            sed -i '$s|echo "\$res"|echo "${{ env.FINAL_KERNEL_LOCAL_VERSION }}"|' ./common/scripts/setlocalversion
-          else
-            echo "版本号后缀 (FINAL_KERNEL_LOCAL_VERSION) 为空, setlocalversion will use default git describe."
-            # Ensure the original echo line is present if no custom version
-            # This part might need adjustment if setlocalversion was heavily modified
-            # sed -i '$s|echo "\$res"|echo "\$res"|' ./common/scripts/setlocalversion
+          GKI_DEFCONFIG_FILE_PATH="./common/arch/arm64/configs/gki_defconfig"
+          SETLOCALVERSION_SCRIPT="./common/scripts/setlocalversion"
+
+          if [ -f "$GKI_DEFCONFIG_FILE_PATH" ]; then
+            sed -i '/^CONFIG_LOCALVERSION=/d' "$GKI_DEFCONFIG_FILE_PATH"
+            echo 'CONFIG_LOCALVERSION=""' >> "$GKI_DEFCONFIG_FILE_PATH"
+            sed -i '/^CONFIG_LOCALVERSION_AUTO=/d' "$GKI_DEFCONFIG_FILE_PATH"
+            echo '# CONFIG_LOCALVERSION_AUTO is not set' >> "$GKI_DEFCONFIG_FILE_PATH"
           fi
 
-          # Modify compile timestamp for reproducibility/cosmetics
-          # Note: This UTS_VERSION format is specific. Adjust if kernel source changes this script.
+          if [ -f "$SETLOCALVERSION_SCRIPT" ]; then
+            if [[ -n "${{ env.FINAL_KERNEL_LOCAL_VERSION }}" ]]; then
+              echo '#!/bin/sh' > "$SETLOCALVERSION_SCRIPT"
+              echo 'echo "${{ env.FINAL_KERNEL_LOCAL_VERSION }}"' >> "$SETLOCALVERSION_SCRIPT"
+              chmod +x "$SETLOCALVERSION_SCRIPT"
+            else
+              sed -i 's/-dirty//g' "$SETLOCALVERSION_SCRIPT"
+            fi
+          fi
+
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Mon Jan 1 00:00:00 UTC 2024"}' ./common/scripts/mkcompile_h
 
-          # Handle -dirty suffix and ABI tooling differences
-          BUILD_SCRIPT_PATH="./build/build.sh" # Path relative to ${{ env.CONFIG }}
-          GKI_DEFCONFIG_PATH="./common/arch/arm64/configs/gki_defconfig" # Path relative to ${{ env.CONFIG }}
-          COMMON_BAZEL_PATH="./common/BUILD.bazel" # Path relative to ${{ env.CONFIG }}
-          KLEAF_STAMP_BZL_PATH="./build/kernel/kleaf/impl/stamp.bzl" # Path relative to ${{ env.CONFIG }}
-
-          if [ -f "$BUILD_SCRIPT_PATH" ]; then # Older build system (build.sh)
-            sed -i 's/-dirty//' ./common/scripts/setlocalversion
-          else # Newer build system (Bazel/Kleaf)
-            if [ -f "$COMMON_BAZEL_PATH" ]; then
-              sed -i '/^[[:space:]]*"protected_exports_list"[[:space:]]*:[[:space:]]*"android\/abi_gki_protected_exports_aarch64",$/d' "$COMMON_BAZEL_PATH"
+          BUILD_SCRIPT_PATH_CHECK="./build/build.sh" 
+          if [ ! -f "$BUILD_SCRIPT_PATH_CHECK" ]; then 
+            COMMON_BAZEL_PATH_CHECK="./common/BUILD.bazel"
+            KLEAF_STAMP_BZL_PATH_CHECK="./build/kernel/kleaf/impl/stamp.bzl"
+            if [ -f "$COMMON_BAZEL_PATH_CHECK" ]; then
+              sed -i '/^[[:space:]]*"protected_exports_list"[[:space:]]*:[[:space:]]*"android\/abi_gki_protected_exports_aarch64",$/d' "$COMMON_BAZEL_PATH_CHECK"
             fi
             rm -rf ./common/android/abi_gki_protected_exports_*
-            if [ -f "$KLEAF_STAMP_BZL_PATH" ]; then
-              sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" "$KLEAF_STAMP_BZL_PATH"
-            fi
-            if [ -f "$GKI_DEFCONFIG_PATH" ]; then # Remove any existing CONFIG_LOCALVERSION if Bazel manages it
-              # sed -E -i '/^CONFIG_LOCALVERSION=/ s/(.*)"$/\1"/' "$GKI_DEFCONFIG_PATH"
-              sed -i '/^CONFIG_LOCALVERSION=/d' "$GKI_DEFCONFIG_PATH"
+            if [ -f "$KLEAF_STAMP_BZL_PATH_CHECK" ]; then
+              sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" "$KLEAF_STAMP_BZL_PATH_CHECK"
             fi
           fi
 
       - name: Build with retry
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 45 # Increased timeout
+          timeout_minutes: 45
           max_attempts: 2
           retry_on: timeout
           command: |
             set -e
             set -x
             cd "${{ env.CONFIG }}"
-            echo "Building the kernel..."
-            BUILD_SCRIPT_PATH="./build/build.sh" # Path relative to ${{ env.CONFIG }}
+            BUILD_SCRIPT_PATH="./build/build.sh"
 
             if [ -f "$BUILD_SCRIPT_PATH" ]; then
-              # Note: KMI_SYMBOL_LIST_STRICT_MODE=0 might hide ABI issues
               LTO=thin SYSTEM_DLKM_RE_SIGN=0 BUILD_SYSTEM_DLKM=0 KMI_SYMBOL_LIST_STRICT_MODE=0 BUILD_CONFIG=common/build.config.gki.aarch64 "$BUILD_SCRIPT_PATH" CC="/usr/bin/ccache clang" || exit 1
             else
-              # Ensure disk_cache path is valid and writable
-              mkdir -p /home/runner/.cache/bazel_disk_cache # Explicitly create if not default
+              mkdir -p /home/runner/.cache/bazel_disk_cache
               tools/bazel build --disk_cache=/home/runner/.cache/bazel_disk_cache --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
             fi
             ccache --show-stats
@@ -699,29 +552,21 @@ jobs:
       - name: 修补 Image 文件 (KPM for SukiSU - Android 12/13)
         if: env.EFFECTIVE_USE_KPM == 'true' && github.event.inputs.kernelsu_variant == 'SukiSU' && (env.SELECTED_ANDROID_VERSION == 'android12' || env.SELECTED_ANDROID_VERSION == 'android13') && env.SELECTED_KERNEL_VERSION != '6.6'
         run: |
-          echo "Patching Image file for KPM (A12/A13 SukiSU, non-6.6)..."
           IMAGE_DIR_PATH="${{ env.CONFIG }}/out/${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}/dist"
           if [ -d "$IMAGE_DIR_PATH" ]; then
             cd "$IMAGE_DIR_PATH"
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch_kpm
             chmod +x patch_kpm
-            ./patch_kpm # This script should operate on 'Image' and produce 'oImage' or similar
-            if [ -f "oImage" ]; then # Assuming patch_kpm outputs oImage and expects original to be Image
+            ./patch_kpm 
+            if [ -f "oImage" ]; then 
                 mv Image Image.orig_kpm
                 mv oImage Image
-                echo "KPM patch applied. Original saved as Image.orig_kpm"
-            else
-                echo "Warning: KPM patch script did not produce oImage."
             fi
-          else
-            echo "Warning: Image directory $IMAGE_DIR_PATH not found for KPM patching."
           fi
 
       - name: 修补 Image 文件 (KPM for SukiSU - Android 14/15)
         if: env.EFFECTIVE_USE_KPM == 'true' && github.event.inputs.kernelsu_variant == 'SukiSU' && (env.SELECTED_ANDROID_VERSION == 'android14' || env.SELECTED_ANDROID_VERSION == 'android15') && env.SELECTED_KERNEL_VERSION != '6.6'
         run: |
-          echo "Patching Image file for KPM (A14/A15 SukiSU, non-6.6)..."
-          # Bazel output path
           IMAGE_DIR_PATH="${{ env.CONFIG }}/bazel-bin/common/kernel_aarch64/"
           if [ -d "$IMAGE_DIR_PATH" ] && [ -f "$IMAGE_DIR_PATH/Image" ]; then
             cd "$IMAGE_DIR_PATH"
@@ -731,39 +576,27 @@ jobs:
             if [ -f "oImage" ]; then
                 mv Image Image.orig_kpm
                 mv oImage Image
-                echo "KPM patch applied. Original saved as Image.orig_kpm"
-            else
-                echo "Warning: KPM patch script did not produce oImage for Bazel build."
             fi
-          else
-            echo "Warning: Image or directory $IMAGE_DIR_PATH/Image not found for KPM patching (Bazel)."
           fi
 
       - name: 将内核 Image 复制到 AnyKernel3 目录
         run: |
-          echo "复制编译好的内核 Image 到 AnyKernel3 目录..."
           IMAGE_SOURCE_PATH=""
           if [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android12" ] || [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android13" ]; then
             IMAGE_SOURCE_PATH="./${{ env.CONFIG }}/out/${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}/dist/Image"
           elif [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android14" ] || [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android15" ]; then
             IMAGE_SOURCE_PATH="./${{ env.CONFIG }}/bazel-bin/common/kernel_aarch64/Image"
           else
-            echo "错误: 未知的安卓版本 (${{ env.SELECTED_ANDROID_VERSION }}) 用于复制 Image 文件。"
             exit 1
           fi
 
           if [ -f "$IMAGE_SOURCE_PATH" ]; then
             if [ -d "./AnyKernel3" ]; then
               cp "$IMAGE_SOURCE_PATH" ./AnyKernel3/Image
-              echo "Image 文件已从 $IMAGE_SOURCE_PATH 复制到 ./AnyKernel3/Image"
             else
-              echo "错误: ./AnyKernel3 目录未找到。"
               exit 1
             fi
           else
-            echo "错误: Image 文件未找到于 $IMAGE_SOURCE_PATH"
-            ls -R "./${{ env.CONFIG }}/out/" || true # List build output for debugging
-            ls -R "./${{ env.CONFIG }}/bazel-bin/" || true
             exit 1
           fi
 
