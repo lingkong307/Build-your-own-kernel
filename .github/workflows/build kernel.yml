@@ -282,20 +282,63 @@ jobs:
       - name: 获取 SukiSU 版本号
         if: github.event.inputs.kernelsu_variant == 'SukiSU'
         shell: bash
-        working-directory: ./${{ env.CONFIG }}
+        env:
+          # 将工作流中的 env.CONFIG 传递给脚本内部，使其可以通过 CONFIG_DIR 变量使用
+          # 这样可以更接近原始脚本中直接使用 $CONFIG 的方式
+          CONFIG_DIR: ${{ env.CONFIG }}
         run: |
-          SUKI_DIR="./KernelSU"
-          SUKI_VERSION_NUM="00000" 
-          if [ -d "$SUKI_DIR/.git" ]; then
-            cd "$SUKI_DIR"
-            # 修改为此行：直接统计当前 HEAD 的提交数
-            COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo 0)
-            if [ "$COMMIT_COUNT" -ne "0" ]; then
-              SUKI_VERSION_NUM=$(expr $COMMIT_COUNT + 10606)
-            fi
-            cd .. 
+          echo "正在获取 SukiSU 版本号..."
+          echo "诊断: 使用的 CONFIG_DIR 是: $CONFIG_DIR"
+          
+          # 进入 $CONFIG_DIR 目录
+          # 检查 CONFIG_DIR 是否为空，以及目录是否存在
+          if [ -z "$CONFIG_DIR" ]; then
+            echo "错误: CONFIG_DIR 环境变量为空!"
+            # 如果 CONFIG_DIR 为空，后续操作会失败，设置默认错误值并退出脚本或此部分
+            echo "SUKI_VERSION_NUM=00000" >> $GITHUB_ENV
+            exit 1 # 或者根据需要处理错误
           fi
+          
+          if [ ! -d "$CONFIG_DIR" ]; then
+            echo "错误: 目录 $CONFIG_DIR 不存在!"
+            echo "SUKI_VERSION_NUM=00000" >> $GITHUB_ENV
+            exit 1 # 或者根据需要处理错误
+          fi
+          
+          cd "$CONFIG_DIR"
+          echo "诊断: 当前工作目录 (PWD after cd to CONFIG_DIR): $(pwd)"
+
+          SUKI_DIR="./KernelSU" # Path relative to $CONFIG_DIR (current directory)
+          echo "诊断: 检查 SukiSU 源码目录于: $(pwd)/$SUKI_DIR"
+          
+          SUKI_VERSION_NUM="" # 按照您原始脚本初始化为空
+          
+          if [ -d "$SUKI_DIR/.git" ]; then
+            echo "诊断: $SUKI_DIR/.git 目录已找到。"
+            cd "$SUKI_DIR" # Now in $CONFIG_DIR/KernelSU
+            echo "诊断: 已进入 $SUKI_DIR, 当前工作目录 (PWD after cd to SUKI_DIR): $(pwd)"
+            
+            # 使用您原始脚本中的分支检查顺序
+            COMMIT_COUNT=$(git rev-list --count main 2>/dev/null || git rev-list --count master 2>/dev/null || git rev-list --count susfs-dev 2>/dev/null || echo 0)
+            echo "诊断: COMMIT_COUNT 计算结果为: $COMMIT_COUNT"
+            
+            if [ "$COMMIT_COUNT" -ne "0" ] && [[ "$COMMIT_COUNT" != "err"* ]]; then # 增加对 "err*" 的检查以防万一
+              SUKI_VERSION_NUM=$(expr $COMMIT_COUNT + 10606)
+              echo "SukiSU 版本号计算成功: $SUKI_VERSION_NUM"
+            else
+              # 注意：原始脚本的 $SUKI_DIR 变量在这里的上下文中是 "./KernelSU"
+              echo "警告: 在 ./KernelSU (相对于 $(cd .. && pwd)/${SUKI_DIR#./}) 中未能正确统计 git 提交数 (main/master/susfs-dev)。将使用默认值00000。"
+              SUKI_VERSION_NUM="00000" # 设置一个默认值以防失败
+            fi
+            cd .. # Back to $CONFIG_DIR
+          else
+            # $PWD 在这里是 $CONFIG_DIR
+            echo "警告: SukiSU 的 .git 目录 ($PWD/$SUKI_DIR/.git) 未找到。将使用默认值00000。" 
+            SUKI_VERSION_NUM="00000" # 设置一个默认值以防失败
+          fi
+          
           echo "SUKI_VERSION_NUM=$SUKI_VERSION_NUM" >> $GITHUB_ENV
+          echo "诊断: 最终设置到 GITHUB_ENV 的 SUKI_VERSION_NUM 是: $SUKI_VERSION_NUM"
 
       - name: 为 KernelSU 变体安装 SUSFS 补丁
         working-directory: ./${{ env.CONFIG }}
