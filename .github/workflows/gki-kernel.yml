@@ -553,29 +553,21 @@ jobs:
           # Create gzip of the Image file
           gzip -n -k -f -9 ./Image > ./Image.gz
 
-      - name: 创建不同格式的ZIP文件
-        run: |
-          echo "Creating zip files for all formats..."
-          cd ./AnyKernel3
+      - name: 生成指定格式的单个AnyKernel3刷机包
+  run: |
+    echo "只生成单个未二次压缩的AnyKernel3刷机包"
+    cd ./AnyKernel3
 
-          # Create and upload zip for each format
-          ZIP_NAME="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
-          echo "Creating zip file: $ZIP_NAME..."
-          mv ../Image ./Image
-          zip -r "../$ZIP_NAME" ./*
-          rm ./Image
+    # 清理旧的可能残留的镜像文件，避免误包
+    rm -f Image Image.lz4 Image.gz
 
-          ZIP_NAME="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3-lz4.zip"
-          echo "Creating zip file: $ZIP_NAME..."
-          mv ../Image.lz4 ./Image.lz4
-          zip -r "../$ZIP_NAME" ./*
-          rm ./Image.lz4
+    # 复制当前根目录下的Image文件进AnyKernel3目录
+    cp ../Image ./Image
 
-          ZIP_NAME="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3-gz.zip"
-          echo "Creating zip file: $ZIP_NAME..."
-          mv ../Image.gz ./Image.gz
-          zip -r "../$ZIP_NAME" ./*
-          rm ./Image.gz
+    # 使用变量动态生成zip包名称
+    ZIP_NAME="AnyKernel3_SukiSUUltra_${{ inputs.revision }}_${{ inputs.kernel_version }}-${{ inputs.sub_level }}.zip"
+    echo "Creating zip file: $ZIP_NAME..."
+    zip -r "../$ZIP_NAME" ./
 
       - name: 运行boot镜像 ${{ inputs.android_version }} 编译脚本
         if: ${{ inputs.android_version == 'android12' }}
