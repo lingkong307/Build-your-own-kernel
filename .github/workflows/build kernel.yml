@@ -13,7 +13,6 @@ on:
         type: choice
         options:
           # Android 12 (5.10)
-          - "android12_5.10_66_2022-01_r11"
           - "android12_5.10_168_2023-04_r9"
           - "android12_5.10_198_2024-01_r17"
           - "android12_5.10_205_2024-03_r9"
