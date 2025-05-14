@@ -1,9 +1,7 @@
 name: A编译内核test
-
 permissions:
   contents: write
   actions: write
-
 on:
   workflow_dispatch:
     inputs:
@@ -37,6 +35,15 @@ on:
           - "android13_5.15_167_2024-11_"
           - "android13_5.15_170_2025-01_"
           - "android13_5.15_X_lts_"
+          - "android14_5.15_131_2023-11_"
+          - "android14_5.15_137_2024-01_"
+          - "android14_5.15_144_2024-03_"
+          - "android14_5.15_148_2024-05_"
+          - "android14_5.15_149_2024-06_"
+          - "android14_5.15_153_2024-07_"
+          - "android14_5.15_158_2024-08_"
+          - "android14_5.15_167_2024-11_"
+          - "android14_5.15_170_2025-01_"
           - "android14_6.1_75_2024-05_"
           - "android15_6.6_50_2024-10_"
           - "android15_6.6_56_2024-11_"
@@ -46,9 +53,8 @@ on:
           - "android15_6.6_77_2025-03_"
           - "android15_6.6_X_lts_"
         default: "android14_6.1_75_2024-05_"
-
       kernelsu_branch:
-        description: "选择SukiSU的功能代码分支 (不影响版本号计算，版本号固定基于SukiSU-Ultra的main分支)"
+        description: "选择SukiSU的功能代码分支 (版本号固定基于SukiSU-Ultra的main分支)"
         required: true
         type: choice
         options:
@@ -109,7 +115,7 @@ jobs:
           echo "suki_version_actual=${suki_version_actual_for_output}" >> $GITHUB_OUTPUT
 
   build_kernel:
-    name: 编译内核(SukiSU) ${{ github.event.inputs.kernel_to_build }}${{ needs.determine_sukisu_version.outputs.job_name_suffix }}
+    name: 编译内核(SukiSU)${{ github.event.inputs.kernel_to_build }}${{ needs.determine_sukisu_version.outputs.job_name_suffix }}
     needs: determine_sukisu_version
     runs-on: ubuntu-latest
     env:
@@ -279,27 +285,32 @@ jobs:
             final_suki_version_num="00000"
           fi
           echo "SUKI_VERSION_NUM=$final_suki_version_num" >> $GITHUB_ENV
-      - name: 为 SukiSU 安装 SUSFS 补丁 (通用部分)
+      - name: 为 SukiSU 安装 SUSFS 补丁
         working-directory: ./${{ env.CONFIG }}
         run: |
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch ./common/ || echo "SUSFS common patch copy failed"
           cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/ || echo "SUSFS fs dir copy failed"
           cp -r ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/ || echo "SUSFS include dir copy failed"
+          KSU_SUBDIR="KernelSU"
+          if [ -d "./$KSU_SUBDIR" ]; then
+            cd "./$KSU_SUBDIR"
+            cd .. 
+          fi
           cd ./common 
           if [ -f "./50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch" ]; then
             patch -p1 --fuzz=3 < 50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch || true
           fi
           FORMATTED_BRANCH_FOR_FIX="${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}-${{ env.SELECTED_OS_PATCH_LEVEL }}"
-          if [[ "$FORMATTED_BRANCH_FOR_FIX" == "android15-6.6-2024-08"* ]] || [[ "$FORMATTED_BRANCH_FOR_FIX" == "android15-6.6-2024-09"* ]]; then
+          if [ "$FORMATTED_BRANCH_FOR_FIX" == "android15-6.6-2024-08" ] || [ "$FORMATTED_BRANCH_FOR_FIX" == "android15-6.6-2024-09" ]; then
             curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/fix/fix6.6.patch -o test.patch
             patch -p1 < test.patch || true
           fi
-      - name: 应用 SukiSU HOOKS补丁
+      - name: 应用新的HOOKS补丁
         working-directory: ./${{ env.CONFIG }}/common
         run: |
           cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
           patch -p1 -F 3 < syscall_hooks.patch || echo "SukiSU hooks patch failed"
-      - name: 复制源文件&应用LZ4KD&ZSTDN补丁 (SukiSU ZRAM)
+      - name: 复制源文件&应用LZ4KD&ZSTDN补丁
         if: ${{ github.event.inputs.use_zram == 'true' }}
         working-directory: ./${{ env.CONFIG }}/common
         run: |
@@ -317,13 +328,13 @@ jobs:
             cp "$LZ4K_OPLUS_PATCH_PATH" ./lz4k_oplus.patch 
             patch -p1 -F 3 < lz4k_oplus.patch || true
           fi
-      - name: 应用 SukiSU 隐藏某特征的补丁
+      - name: 应用隐藏某特征的补丁
         working-directory: ./${{ env.CONFIG }}/common
         run: |
           PATCH_FILE="../../SukiSU_patch/69_hide_stuff.patch"
           if [ -f "$PATCH_FILE" ]; then
             cp "$PATCH_FILE" ./hide_stuff.patch
-            patch -p1 -F 3 < hide_stuff.patch || echo "SukiSU Hide stuff patch failed"
+            patch -p1 -F 3 < hide_stuff.patch || echo "Hide stuff patch failed"
           fi
       - name: LZ4KD&Lz4k_oplus配置
         if: ${{ github.event.inputs.use_zram == 'true' }}
@@ -356,35 +367,34 @@ jobs:
           elif [ "${{ env.SELECTED_KERNEL_VERSION }}" = "5.10" ] || [ "${{ env.SELECTED_KERNEL_VERSION }}" = "5.15" ]; then
             GKI_MODULES_FILE="${{ env.CONFIG }}/common/android/gki_aarch64_modules"
             if [ -f "$GKI_MODULES_FILE" ]; then
-               sed -i '/^zram\.ko$/d' "$GKI_MODULES_FILE"
-               sed -i '/^zsmalloc\.ko$/d' "$GKI_MODULES_FILE"
+              rm "$GKI_MODULES_FILE"
             fi
+            touch "$GKI_MODULES_FILE"
           fi
           if grep -q "CONFIG_ZSMALLOC=y" "$CONFIG_FILE_PATH" && grep -q "CONFIG_ZRAM=y" "$CONFIG_FILE_PATH"; then
-            echo "CONFIG_CRYPTO_LZ4=y" >> "$CONFIG_FILE_PATH"
             echo "CONFIG_CRYPTO_LZ4HC=y" >> "$CONFIG_FILE_PATH"
             echo "CONFIG_CRYPTO_LZ4K=y" >> "$CONFIG_FILE_PATH"
             echo "CONFIG_CRYPTO_LZ4KD=y" >> "$CONFIG_FILE_PATH"
             echo "CONFIG_CRYPTO_842=y" >> "$CONFIG_FILE_PATH"
             echo "CONFIG_CRYPTO_LZ4K_OPLUS=y" >> "$CONFIG_FILE_PATH"
           fi
-      - name: 添加SukiSU及SUSFS配置设置
+      - name: 添加SUSFS配置设置
         run: |
           GKI_DEFCONFIG_PATH="${{ env.CONFIG }}/common/arch/arm64/configs/gki_defconfig"
           BUILD_CONFIG_GKI_PATH="${{ env.CONFIG }}/common/build.config.gki"
           BUILD_CONFIG_BAZEL_PATH="${{ env.CONFIG }}/common/build.config.gki.aarch64"
-          BUILD_SCRIPT_PATH_CHECK="./build/build.sh" 
+          BUILD_SCRIPT_PATH_CHECK_CONTEXTUAL="${{ env.CONFIG }}/build/build.sh"
           echo "CONFIG_KSU=y" >> "$GKI_DEFCONFIG_PATH"
           if [[ "${{ env.EFFECTIVE_USE_KPM }}" == "true" ]]; then
-              echo "CONFIG_KPM=y" >> "$GKI_DEFCONFIG_PATH"
+            echo "CONFIG_KPM=y" >> "$GKI_DEFCONFIG_PATH"
           fi
-          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$GKI_DEFCONFIG_PATH" 
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$GKI_DEFCONFIG_PATH" 
+          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$GKI_DEFCONFIG_PATH"
+          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_TMPFS_XATTR=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_IP6_NF_TARGET_HL=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$GKI_DEFCONFIG_PATH" 
+          echo "CONFIG_IP6_NF_MATCH_HL=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_TCP_CONG_ADVANCED=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_TCP_CONG_BBR=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_NET_SCH_FQ=y" >> "$GKI_DEFCONFIG_PATH"
@@ -394,18 +404,21 @@ jobs:
           if [ -f "$BUILD_CONFIG_GKI_PATH" ]; then
             sed -i 's/check_defconfig//' "$BUILD_CONFIG_GKI_PATH"
           fi
-          if [ -f "$BUILD_CONFIG_BAZEL_PATH" ]; then 
+          if [ -f "$BUILD_CONFIG_BAZEL_PATH" ]; then
             sed -i 's/check_defconfig//' "$BUILD_CONFIG_BAZEL_PATH"
-            echo "SKIP_KMI_STRICT_MODE_CHECK=1" >> "$BUILD_CONFIG_BAZEL_PATH"
           fi
-          if [ -f "${{ env.CONFIG }}/common/build.config" ]; then 
+          if [ -f "${{ env.CONFIG }}/common/build.config" ]; then
             sed -i 's/check_defconfig//' "${{ env.CONFIG }}/common/build.config"
-            cd "${{ env.CONFIG }}" # cd to where BUILD_SCRIPT_PATH_CHECK is relative from
-            if [ ! -f "$BUILD_SCRIPT_PATH_CHECK" ]; then 
+          fi
+          cd "${{ env.CONFIG }}"
+          if [ ! -f "$BUILD_SCRIPT_PATH_CHECK_CONTEXTUAL" ]; then
+            if [ -f "./common/build.config.gki.aarch64" ]; then
+                echo "SKIP_KMI_STRICT_MODE_CHECK=1" >> "./common/build.config.gki.aarch64"
+            elif [ -f "./common/build.config" ]; then
                  echo "SKIP_KMI_STRICT_MODE_CHECK=1" >> "./common/build.config"
             fi
-            cd "$GITHUB_WORKSPACE" # Go back to original directory
           fi
+          cd "$GITHUB_WORKSPACE"
           echo "CONFIG_KSU_SUSFS=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$GKI_DEFCONFIG_PATH"
@@ -421,7 +434,6 @@ jobs:
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$GKI_DEFCONFIG_PATH"
-
       - name: 配置内核名称和编译时间戳
         working-directory: ./${{ env.CONFIG }}
         run: |
@@ -442,9 +454,7 @@ jobs:
               sed -i 's/-dirty//g' "$SETLOCALVERSION_SCRIPT"
             fi
           fi
-          if [ -f "./common/scripts/mkcompile_h" ]; then
-            perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Mon Jan 1 00:00:00 UTC 2024"}' ./common/scripts/mkcompile_h
-          fi
+          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Mon Jan 1 00:00:00 UTC 2024"}' ./common/scripts/mkcompile_h
           BUILD_SCRIPT_PATH_CHECK="./build/build.sh" 
           if [ ! -f "$BUILD_SCRIPT_PATH_CHECK" ]; then 
             COMMON_BAZEL_PATH_CHECK="./common/BUILD.bazel"
@@ -453,12 +463,10 @@ jobs:
               sed -i '/^[[:space:]]*"protected_exports_list"[[:space:]]*:[[:space:]]*"android\/abi_gki_protected_exports_aarch64",$/d' "$COMMON_BAZEL_PATH_CHECK"
             fi
             rm -rf ./common/android/abi_gki_protected_exports_*
-            rm -rf ./common/android/abi_gki_aarch64_*
             if [ -f "$KLEAF_STAMP_BZL_PATH_CHECK" ]; then
               sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" "$KLEAF_STAMP_BZL_PATH_CHECK"
             fi
           fi
-
       - name: Build with retry
         uses: nick-fields/retry@v3
         with:
@@ -477,7 +485,6 @@ jobs:
               tools/bazel build --disk_cache=/home/runner/.cache/bazel_disk_cache --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
             fi
             ccache --show-stats
-
       - name: 修补 Image 文件 (KPM for SukiSU - Android 12/13)
         if: env.EFFECTIVE_USE_KPM == 'true' && (env.SELECTED_ANDROID_VERSION == 'android12' || env.SELECTED_ANDROID_VERSION == 'android13') && env.SELECTED_KERNEL_VERSION != '6.6'
         run: |
@@ -525,7 +532,7 @@ jobs:
           else
             exit 1
           fi
-      - name: 上传 AnyKernel3 SukiSU 刷机包
+      - name: 上传 AnyKernel3 刷机包
         uses: actions/upload-artifact@v4
         with:
           name: |
