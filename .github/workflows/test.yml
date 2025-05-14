@@ -1,4 +1,4 @@
-name: A编译内核test (SukiSU Only - v2)
+name: A编译内核test (SukiSU Only - v3 Fix Attempt)
 
 permissions:
   contents: write
@@ -92,20 +92,22 @@ jobs:
 
           echo "Attempting to determine SukiSU version for job name."
           SUKI_REPO_URL="https://github.com/ShirkNeko/SukiSU-Ultra.git"
-          SUKI_BRANCH="main" # SukiSU 稳定版分支 (setup.sh 默认)
+          CLONE_BRANCH="main" # Default branch to clone for SukiSU
 
           if [[ "${{ github.event.inputs.kernelsu_branch }}" == "Dev(开发)" ]]; then
-            SUKI_BRANCH="susfs-dev" # SukiSU 开发版分支
+            CLONE_BRANCH="susfs-dev" # SukiSU 开发版分支
           elif [[ "${{ github.event.inputs.kernelsu_branch }}" == "Other(其他/指定)" ]]; then
-            echo "::warning:: 'Other(其他/指定)' SukiSU branch selected. Pre-calculation will use default SukiSU branch '$SUKI_BRANCH'. Actual branch used by setup.sh might differ if KSU_SETUP_BRANCH_ARG is customized further or not supported by setup.sh."
+            echo "::warning:: 'Other(其他/指定)' SukiSU branch selected. Pre-calculation will clone default SukiSU branch '$CLONE_BRANCH'. Actual branch used by setup.sh might differ."
           fi
 
-          echo "Cloning SukiSU from $SUKI_REPO_URL branch $SUKI_BRANCH (full clone for accurate count)"
-          # Full clone of the specific branch for accurate commit count
-          if git clone --branch "$SUKI_BRANCH" --single-branch "$SUKI_REPO_URL" SukiSU_temp_for_version; then
+          echo "Cloning SukiSU from $SUKI_REPO_URL branch $CLONE_BRANCH (full clone for accurate count)"
+          if git clone --branch "$CLONE_BRANCH" --single-branch "$SUKI_REPO_URL" SukiSU_temp_for_version; then
             cd SukiSU_temp_for_version
-            commit_count=$(git rev-list --count HEAD 2>/dev/null || echo 0)
-            echo "Commit count from HEAD of $SUKI_BRANCH: $commit_count"
+            echo "::debug:: Successfully cloned $CLONE_BRANCH. Current branch in SukiSU_temp_for_version: $(git rev-parse --abbrev-ref HEAD)"
+            echo "::debug:: Attempting SukiSU commit count using multi-branch check (main, master, susfs-dev)..."
+            # Use the user's original multi-branch commit counting logic
+            commit_count=$(git rev-list --count main 2>/dev/null || git rev-list --count master 2>/dev/null || git rev-list --count susfs-dev 2>/dev/null || echo 0)
+            echo "Commit count for SukiSU (multi-branch check on cloned $CLONE_BRANCH): $commit_count"
 
             if [[ "$commit_count" -ne "0" && "$commit_count" != "err"* ]]; then
               suki_version_num_for_name=$(expr $commit_count + 10606)
@@ -122,7 +124,7 @@ jobs:
           else
             suki_version_actual_for_output="00000"
             job_suffix_text=" (SukiSU - 克隆失败)"
-            echo "::error:: Failed to clone SukiSU repository for version calculation."
+            echo "::error:: Failed to clone SukiSU repository ($SUKI_REPO_URL branch $CLONE_BRANCH) for version calculation."
           fi
           
           echo "job_suffix=${job_suffix_text}" >> $GITHUB_OUTPUT
@@ -281,8 +283,7 @@ jobs:
           git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" || \
             (git clone https://gitlab.com/simonpunk/susfs4ksu.git -b main)
-          # kernel_patches might still be useful for generic patches, or remove if SukiSU_patch covers all
-          git clone https://github.com/WildPlusKernel/kernel_patches.git
+          git clone https://github.com/WildPlusKernel/kernel_patches.git # May still contain useful generic patches
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
 
       - name: 初始化和同步内核源代码
@@ -302,18 +303,17 @@ jobs:
         run: |
           KSU_SETUP_BRANCH_ARG=""
           if [[ "${{ github.event.inputs.kernelsu_branch }}" == "Stable(标准)" ]]; then
-            KSU_SETUP_BRANCH_ARG="" # SukiSU setup.sh default (likely main)
+            KSU_SETUP_BRANCH_ARG="" 
           elif [[ "${{ github.event.inputs.kernelsu_branch }}" == "Dev(开发)" ]]; then
-            KSU_SETUP_BRANCH_ARG="-s susfs-dev" # SukiSU dev branch
+            KSU_SETUP_BRANCH_ARG="-s susfs-dev" 
           elif [[ "${{ github.event.inputs.kernelsu_branch }}" == "Other(其他/指定)" ]]; then
-            echo "Warning: 'Other(其他/指定)' SukiSU branch selected. KSU_SETUP_BRANCH_ARG will be empty, setup.sh will use its default. For a specific custom branch, modify KSU_SETUP_BRANCH_ARG here if setup.sh supports it, e.g., KSU_SETUP_BRANCH_ARG=\"-s your_custom_branch_name\"" >&2
+            echo "Warning: 'Other(其他/指定)' SukiSU branch selected. KSU_SETUP_BRANCH_ARG will be empty, setup.sh will use its default." >&2
           fi
           echo "KSU_BRANCH_ARG=${KSU_SETUP_BRANCH_ARG}" >> $GITHUB_ENV
 
       - name: 添加 SukiSU
         run: |
           cd "${{ env.CONFIG }}"
-          # Always use SukiSU setup script
           curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash ${{ env.KSU_BRANCH_ARG }}
 
       - name: 获取 SukiSU 版本号
@@ -324,7 +324,6 @@ jobs:
           echo "正在获取 SukiSU 版本号..."
           final_suki_version_num=""
 
-          # Try to use precalculated version first
           if [[ -n "${{ env.PRECALCULATED_SUKI_VERSION }}" && "${{ env.PRECALCULATED_SUKI_VERSION }}" != "00000" && "${{ env.PRECALCULATED_SUKI_VERSION }}" != "" ]]; then
             echo "诊断: 使用来自 determine_versions_for_name job 预计算的 SukiSU 版本: ${{ env.PRECALCULATED_SUKI_VERSION }}"
             final_suki_version_num="${{ env.PRECALCULATED_SUKI_VERSION }}"
@@ -339,18 +338,26 @@ jobs:
             else
               cd "$CONFIG_DIR"
               echo "诊断: 当前工作目录 (PWD after cd to CONFIG_DIR): $(pwd)"
-              # This directory name must match what SukiSU's setup.sh creates (usually "KernelSU")
-              SUKI_DIR_NAME="KernelSU" 
+              SUKI_DIR_NAME="KernelSU" # Directory where SukiSU setup.sh places the .git repo
               
               if [ ! -d "./$SUKI_DIR_NAME/.git" ]; then
-                 echo "警告: SukiSU的.git目录(./$SUKI_DIR_NAME/.git)未找到。请检查SukiSU的setup.sh脚本创建的目录名。当前目录内容:"
+                 echo "警告: SukiSU的.git目录(./$SUKI_DIR_NAME/.git)未找到。请检查SukiSU的setup.sh脚本创建的目录名。当前目录 ($PWD) 内容:"
                  ls -la ./
+                 # If KernelSU is not directly under CONFIG_DIR, list CONFIG_DIR content
+                 if [ "$PWD" != "$CONFIG_DIR" ]; then # Should not happen if cd $CONFIG_DIR was successful
+                    echo "列出 CONFIG_DIR ($CONFIG_DIR) 的内容:"
+                    ls -la "$CONFIG_DIR"
+                 fi
                  final_suki_version_num="00000" 
               else
                 echo "诊断: ./${SUKI_DIR_NAME}/.git 目录已找到。"
                 cd "./$SUKI_DIR_NAME"
-                echo "诊断: 已进入 ./$SUKI_DIR_NAME, 当前工作目录 (PWD after cd to SUKI_DIR_NAME): $(pwd)"
-                # Fallback to original multi-branch check for robustness, performed on the state setup.sh left
+                echo "诊断: 已进入 ./$SUKI_DIR_NAME, 当前工作目录 (PWD): $(pwd)"
+                echo "诊断: git status:"
+                git status
+                echo "诊断: git branch:"
+                git branch -vv
+                # Using the original multi-branch commit counting logic from user's first script
                 COMMIT_COUNT=$(git rev-list --count main 2>/dev/null || git rev-list --count master 2>/dev/null || git rev-list --count susfs-dev 2>/dev/null || echo 0)
                 echo "诊断: COMMIT_COUNT (local multi-branch check) 计算结果为: $COMMIT_COUNT"
                 if [ "$COMMIT_COUNT" -ne "0" ] && [[ "$COMMIT_COUNT" != "err"* ]]; then
@@ -366,6 +373,10 @@ jobs:
           fi
           echo "SUKI_VERSION_NUM=$final_suki_version_num" >> $GITHUB_ENV
           echo "诊断: 最终设置到 GITHUB_ENV 的 SUKI_VERSION_NUM 是: $final_suki_version_num"
+
+      # ... (Rest of your steps: SUSFS patches, HOOKS, ZRAM, defconfig settings, build, KPM, etc.) ...
+      # Ensure these steps are SukiSU-specific or generic enough.
+      # For example, "为 SukiSU 安装 SUSFS 补丁 (通用部分)" and subsequent SukiSU specific steps look fine.
 
       - name: 为 SukiSU 安装 SUSFS 补丁 (通用部分)
         working-directory: ./${{ env.CONFIG }}
