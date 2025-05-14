@@ -1,4 +1,4 @@
-name: A编译内核test (SukiSU Only - v4 Consistent HEAD Count)
+name: A编译内核test (SukiSU Only - Original Calc Focus)
 
 permissions:
   contents: write
@@ -72,77 +72,14 @@ on:
         default: true
 
 jobs:
-  determine_versions_for_name:
-    name: 确定 SukiSU 版本信息用于 Job 名称
-    runs-on: ubuntu-latest
-    outputs:
-      job_name_suffix: ${{ steps.calculate_versions.outputs.job_suffix }}
-      precalculated_suki_version: ${{ steps.calculate_versions.outputs.suki_version_actual }}
-    steps:
-      - name: 安装 Git
-        run: sudo apt-get update && sudo apt-get install -y git
-
-      - name: 计算 SukiSU 版本号
-        id: calculate_versions
-        shell: bash
-        run: |
-          suki_version_num_for_name="00000"
-          suki_version_actual_for_output="00000"
-          job_suffix_text=""
-
-          echo "Attempting to determine SukiSU version for job name."
-          SUKI_REPO_URL="https://github.com/ShirkNeko/SukiSU-Ultra.git"
-          CLONE_BRANCH="main" # Default branch to clone for SukiSU (for Stable or Other)
-
-          if [[ "${{ github.event.inputs.kernelsu_branch }}" == "Dev(开发)" ]]; then
-            CLONE_BRANCH="susfs-dev" # SukiSU 开发版分支
-            echo "::debug:: SukiSU 'Dev(开发)' branch selected. Will clone ShirkNeko/SukiSU-Ultra branch: $CLONE_BRANCH"
-          elif [[ "${{ github.event.inputs.kernelsu_branch }}" == "Stable(标准)" ]]; then
-            CLONE_BRANCH="main"
-            echo "::debug:: SukiSU 'Stable(标准)' branch selected. Will clone ShirkNeko/SukiSU-Ultra branch: $CLONE_BRANCH"
-          else # Other(其他/指定)
-            echo "::warning:: 'Other(其他/指定)' SukiSU branch selected. Pre-calculation will clone default SukiSU branch '$CLONE_BRANCH' from ShirkNeko/SukiSU-Ultra."
-          fi
-
-          echo "Cloning SukiSU from $SUKI_REPO_URL branch $CLONE_BRANCH (full clone of single branch for accurate count)"
-          # Full clone of the single specific branch
-          if git clone --branch "$CLONE_BRANCH" --single-branch "$SUKI_REPO_URL" SukiSU_temp_for_version; then
-            cd SukiSU_temp_for_version
-            echo "::debug:: Successfully cloned $CLONE_BRANCH. Current branch in SukiSU_temp_for_version: $(git rev-parse --abbrev-ref HEAD)"
-            echo "::debug:: Attempting SukiSU commit count using 'git rev-list --count HEAD'..."
-            commit_count=$(git rev-list --count HEAD 2>/dev/null || echo 0)
-            echo "Commit count for SukiSU (from HEAD of cloned $CLONE_BRANCH): $commit_count"
-
-            if [[ "$commit_count" -ne "0" && "$commit_count" != "err"* ]]; then
-              suki_version_num_for_name=$(expr $commit_count + 10606)
-              suki_version_actual_for_output=$suki_version_num_for_name
-              job_suffix_text=" (SukiSU $suki_version_num_for_name)"
-              echo "SukiSU version calculated for job name: $suki_version_num_for_name"
-            else
-              suki_version_actual_for_output="00000"
-              job_suffix_text=" (SukiSU - 版本计算失败)"
-              echo "::warning:: Failed to calculate SukiSU commit count for job name. Commit count was: $commit_count"
-            fi
-            cd ..
-            rm -rf SukiSU_temp_for_version
-          else
-            suki_version_actual_for_output="00000"
-            job_suffix_text=" (SukiSU - 克隆失败)"
-            echo "::error:: Failed to clone SukiSU repository ($SUKI_REPO_URL branch $CLONE_BRANCH) for version calculation."
-          fi
-          
-          echo "job_suffix=${job_suffix_text}" >> $GITHUB_OUTPUT
-          echo "suki_version_actual=${suki_version_actual_for_output}" >> $GITHUB_OUTPUT
-
   build_kernel:
-    name: 编译内核(SukiSU) ${{ github.event.inputs.kernel_to_build }}${{ needs.determine_versions_for_name.outputs.job_name_suffix }}
-    needs: determine_versions_for_name
+    name: 编译内核(SukiSU) ${{ github.event.inputs.kernel_to_build }} # SukiSU版本号不再显示在Job名中
     runs-on: ubuntu-latest
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
-      PRECALCULATED_SUKI_VERSION: ${{ needs.determine_versions_for_name.outputs.precalculated_suki_version }}
+      # PRECALCULATED_SUKI_VERSION 环境变量已移除
 
     steps:
       - name: Parse Kernel Selection and Set Parameters
@@ -320,59 +257,54 @@ jobs:
           cd "${{ env.CONFIG }}"
           curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash ${{ env.KSU_BRANCH_ARG }}
 
-      - name: 获取 SukiSU 版本号
+      - name: 获取 SukiSU 版本号 (使用原始计算逻辑)
         shell: bash
         env:
           CONFIG_DIR: ${{ env.CONFIG }}
         run: |
-          echo "正在获取 SukiSU 版本号..."
-          final_suki_version_num=""
+          echo "正在获取 SukiSU 版本号 (使用原始计算逻辑)..."
+          final_suki_version_num="00000" # Default value
 
-          if [[ -n "${{ env.PRECALCULATED_SUKI_VERSION }}" && "${{ env.PRECALCULATED_SUKI_VERSION }}" != "00000" && "${{ env.PRECALCULATED_SUKI_VERSION }}" != "" ]]; then
-            echo "诊断: 使用来自 determine_versions_for_name job 预计算的 SukiSU 版本: ${{ env.PRECALCULATED_SUKI_VERSION }}"
-            final_suki_version_num="${{ env.PRECALCULATED_SUKI_VERSION }}"
+          if [ -z "$CONFIG_DIR" ]; then
+            echo "错误: CONFIG_DIR 环境变量为空!"
+          elif [ ! -d "$CONFIG_DIR" ]; then
+            echo "错误: 目录 $CONFIG_DIR 不存在!"
           else
-            echo "诊断: PRECALCULATED_SUKI_VERSION ('${{ env.PRECALCULATED_SUKI_VERSION }}') 不可用或无效，将执行本地计算."
-            if [ -z "$CONFIG_DIR" ]; then
-              echo "错误: CONFIG_DIR 环境变量为空!"
-              final_suki_version_num="00000"
-            elif [ ! -d "$CONFIG_DIR" ]; then
-              echo "错误: 目录 $CONFIG_DIR 不存在!"
-              final_suki_version_num="00000"
+            cd "$CONFIG_DIR"
+            echo "诊断: 当前工作目录 (PWD after cd to CONFIG_DIR): $(pwd)"
+            # SUKI_DIR_NAME 必须是 SukiSU setup.sh 脚本在内核源码树中创建的目录名
+            SUKI_DIR_NAME="KernelSU" 
+            
+            if [ ! -d "./$SUKI_DIR_NAME/.git" ]; then
+               echo "警告: SukiSU的.git目录(./$SUKI_DIR_NAME/.git)未找到。请检查SukiSU的setup.sh脚本创建的目录名。当前目录 ($PWD) 内容:"
+               ls -la ./
             else
-              cd "$CONFIG_DIR"
-              echo "诊断: 当前工作目录 (PWD after cd to CONFIG_DIR): $(pwd)"
-              SUKI_DIR_NAME="KernelSU" 
+              echo "诊断: ./${SUKI_DIR_NAME}/.git 目录已找到。"
+              cd "./$SUKI_DIR_NAME"
+              echo "诊断: 已进入 ./$SUKI_DIR_NAME, 当前工作目录 (PWD): $(pwd)"
+              echo "诊断: git status:"
+              git status -sb # -sb for short branch status
+              echo "诊断: git branch -vv:"
+              git branch -vv
               
-              if [ ! -d "./$SUKI_DIR_NAME/.git" ]; then
-                 echo "警告: SukiSU的.git目录(./$SUKI_DIR_NAME/.git)未找到。请检查SukiSU的setup.sh脚本创建的目录名。当前目录 ($PWD) 内容:"
-                 ls -la ./
-                 final_suki_version_num="00000" 
+              # 使用您原始工作流中被认为是“正确”的多分支检查逻辑
+              echo "诊断: 使用原始的多分支检查逻辑计算 SukiSU commit 数 (main || master || susfs-dev)..."
+              COMMIT_COUNT=$(git rev-list --count main 2>/dev/null || git rev-list --count master 2>/dev/null || git rev-list --count susfs-dev 2>/dev/null || echo 0)
+              echo "诊断: COMMIT_COUNT (原始多分支检查) 计算结果为: $COMMIT_COUNT"
+
+              if [ "$COMMIT_COUNT" -ne "0" ] && [[ "$COMMIT_COUNT" != "err"* ]]; then
+                final_suki_version_num=$(expr $COMMIT_COUNT + 10606)
+                echo "SukiSU 版本号本地计算成功 (原始逻辑): $final_suki_version_num"
               else
-                echo "诊断: ./${SUKI_DIR_NAME}/.git 目录已找到。"
-                cd "./$SUKI_DIR_NAME"
-                echo "诊断: 已进入 ./$SUKI_DIR_NAME, 当前工作目录 (PWD): $(pwd)"
-                echo "诊断: git status:"
-                git status -sb # -sb for short branch status
-                echo "诊断: git branch -vv:"
-                git branch -vv
-                echo "诊断: 尝试使用 'git rev-list --count HEAD' 计算 SukiSU commit 数..."
-                COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo 0)
-                echo "诊断: COMMIT_COUNT (from HEAD of SukiSU submodule) 计算结果为: $COMMIT_COUNT"
-                if [ "$COMMIT_COUNT" -ne "0" ] && [[ "$COMMIT_COUNT" != "err"* ]]; then
-                  final_suki_version_num=$(expr $COMMIT_COUNT + 10606)
-                  echo "SukiSU 版本号本地计算成功: $final_suki_version_num"
-                else
-                  echo "警告: 在 ./$SUKI_DIR_NAME 中未能正确统计 git 提交数 (HEAD)。将使用默认值00000。"
-                  final_suki_version_num="00000"
-                fi
-                cd .. 
+                echo "警告: 使用原始多分支检查逻辑未能正确统计 git 提交数。将使用默认值00000。"
               fi
+              cd .. 
             fi
           fi
           echo "SUKI_VERSION_NUM=$final_suki_version_num" >> $GITHUB_ENV
           echo "诊断: 最终设置到 GITHUB_ENV 的 SUKI_VERSION_NUM 是: $final_suki_version_num"
 
+      # --- 接下来的步骤与之前的 SukiSU-only 版本相同 ---
       - name: 为 SukiSU 安装 SUSFS 补丁 (通用部分)
         working-directory: ./${{ env.CONFIG }}
         run: |
