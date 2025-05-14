@@ -73,7 +73,7 @@ on:
 
 jobs:
   determine_sukisu_main_branch_version: # Job名修改，更清晰
-    name: 获取 SukiSU (main分支) 版本信息
+    name: 获取 SukiSU版本信息
     runs-on: ubuntu-latest
     outputs:
       job_name_suffix: ${{ steps.calculate_main_version.outputs.job_suffix }}
@@ -83,7 +83,7 @@ jobs:
       - name: 安装 Git
         run: sudo apt-get update && sudo apt-get install -y git
 
-      - name: 计算 SukiSU main 分支版本号
+      - name: 计算 SukiSU 版本号
         id: calculate_main_version
         shell: bash
         run: |
