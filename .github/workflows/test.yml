@@ -81,7 +81,7 @@ jobs:
     steps:
       - name: 安装 Git
         run: sudo apt-get update && sudo apt-get install -y git
-      - name: 计算 SukiSU (main) 版本号
+      - name: 计算 SukiSU 版本号
         id: calculate_version
         shell: bash
         run: |
@@ -271,7 +271,7 @@ jobs:
         run: |
           cd "${{ env.CONFIG }}"
           curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash ${{ env.KSU_BRANCH_ARG }}
-      - name: 设置 SukiSU 版本号 (固定基于 SukiSU-Ultra main 分支)
+      - name: 设置 SukiSU 版本号
         shell: bash
         run: |
           final_suki_version_num="${{ env.SUKI_VERSION_NUM_FROM_PREVIOUS_JOB }}"
@@ -373,6 +373,7 @@ jobs:
           GKI_DEFCONFIG_PATH="${{ env.CONFIG }}/common/arch/arm64/configs/gki_defconfig"
           BUILD_CONFIG_GKI_PATH="${{ env.CONFIG }}/common/build.config.gki"
           BUILD_CONFIG_BAZEL_PATH="${{ env.CONFIG }}/common/build.config.gki.aarch64"
+          BUILD_SCRIPT_PATH_CHECK="./build/build.sh" 
           echo "CONFIG_KSU=y" >> "$GKI_DEFCONFIG_PATH"
           if [[ "${{ env.EFFECTIVE_USE_KPM }}" == "true" ]]; then
               echo "CONFIG_KPM=y" >> "$GKI_DEFCONFIG_PATH"
@@ -390,18 +391,20 @@ jobs:
           echo "CONFIG_TCP_CONG_BIC=n" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_TCP_CONG_HTCP=n" >> "$GKI_DEFCONFIG_PATH"
-          if [ -f "$BUILD_CONFIG_GKI_PATH" ]; then # For build.sh
+          if [ -f "$BUILD_CONFIG_GKI_PATH" ]; then
             sed -i 's/check_defconfig//' "$BUILD_CONFIG_GKI_PATH"
           fi
-          if [ -f "$BUILD_CONFIG_BAZEL_PATH" ]; then # For Bazel/Kleaf
+          if [ -f "$BUILD_CONFIG_BAZEL_PATH" ]; then 
             sed -i 's/check_defconfig//' "$BUILD_CONFIG_BAZEL_PATH"
-            echo "SKIP_KMI_STRICT_MODE_CHECK=1" >> "$BUILD_CONFIG_BAZEL_PATH" # Attempt to relax ABI checks for Bazel
+            echo "SKIP_KMI_STRICT_MODE_CHECK=1" >> "$BUILD_CONFIG_BAZEL_PATH"
           fi
-          if [ -f "${{ env.CONFIG }}/common/build.config" ]; then # General fallback
+          if [ -f "${{ env.CONFIG }}/common/build.config" ]; then 
             sed -i 's/check_defconfig//' "${{ env.CONFIG }}/common/build.config"
-            if [ ! -f "$BUILD_SCRIPT_PATH_CHECK" ]; then # If Bazel build
-                 echo "SKIP_KMI_STRICT_MODE_CHECK=1" >> "${{ env.CONFIG }}/common/build.config"
+            cd "${{ env.CONFIG }}" # cd to where BUILD_SCRIPT_PATH_CHECK is relative from
+            if [ ! -f "$BUILD_SCRIPT_PATH_CHECK" ]; then 
+                 echo "SKIP_KMI_STRICT_MODE_CHECK=1" >> "./common/build.config"
             fi
+            cd "$GITHUB_WORKSPACE" # Go back to original directory
           fi
           echo "CONFIG_KSU_SUSFS=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
@@ -426,7 +429,7 @@ jobs:
           SETLOCALVERSION_SCRIPT="./common/scripts/setlocalversion"
           if [ -f "$GKI_DEFCONFIG_FILE_PATH" ]; then
             sed -i '/^CONFIG_LOCALVERSION=/d' "$GKI_DEFCONFIG_FILE_PATH"
-            echo 'CONFIG_LOCALVERSION="${{ env.FINAL_KERNEL_LOCAL_VERSION }}"' >> "$GKI_DEFCONFIG_FILE_PATH"
+            echo 'CONFIG_LOCALVERSION=""' >> "$GKI_DEFCONFIG_FILE_PATH"
             sed -i '/^CONFIG_LOCALVERSION_AUTO=/d' "$GKI_DEFCONFIG_FILE_PATH"
             echo '# CONFIG_LOCALVERSION_AUTO is not set' >> "$GKI_DEFCONFIG_FILE_PATH"
           fi
@@ -449,16 +452,11 @@ jobs:
             if [ -f "$COMMON_BAZEL_PATH_CHECK" ]; then
               sed -i '/^[[:space:]]*"protected_exports_list"[[:space:]]*:[[:space:]]*"android\/abi_gki_protected_exports_aarch64",$/d' "$COMMON_BAZEL_PATH_CHECK"
             fi
-            # 恢复您原始脚本中对 Bazel 构建删除 ABI 文件的行为
             rm -rf ./common/android/abi_gki_protected_exports_*
             rm -rf ./common/android/abi_gki_aarch64_*
             if [ -f "$KLEAF_STAMP_BZL_PATH_CHECK" ]; then
               sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" "$KLEAF_STAMP_BZL_PATH_CHECK"
             fi
-          else
-            # 对于 build.sh 构建，原始脚本没有在这个 if/else 结构中显式删除这些文件
-            # 但 KMI_SYMBOL_LIST_STRICT_MODE=0 在命令行中处理
-            echo "build.sh based build. ABI handling relies on KMI_SYMBOL_LIST_STRICT_MODE=0 in build command."
           fi
 
       - name: Build with retry
