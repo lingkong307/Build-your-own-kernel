@@ -83,7 +83,7 @@ on:
 
 jobs:
   build_kernel:
-    name: Build Selected Kernel
+    name: 编译内核 ${{ github.event.inputs.kernel_to_build }}
     runs-on: ubuntu-latest
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
