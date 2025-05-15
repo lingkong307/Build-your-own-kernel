@@ -469,7 +469,7 @@ jobs:
             fi
           fi
 
-      - name: 重试构建
+      - name: 构建内核（时间较长）
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 45
