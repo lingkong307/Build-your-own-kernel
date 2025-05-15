@@ -433,6 +433,11 @@ jobs:
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$GKI_DEFCONFIG_PATH"
+
+      - name: 查看 mkcompile_h 修改前
+  working-directory: ./${{ env.CONFIG }}/common/scripts
+  run: cat mkcompile_h || echo "mkcompile_h not found"
+
       - name: 配置内核名称和编译时间戳
         working-directory: ./${{ env.CONFIG }}
         run: |
@@ -466,6 +471,11 @@ jobs:
               sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" "$KLEAF_STAMP_BZL_PATH_CHECK"
             fi
           fi
+      
+      - name: 查看 mkcompile_h 修改后
+  working-directory: ./${{ env.CONFIG }}/common/scripts
+  run: cat mkcompile_h || echo "mkcompile_h not found"
+
       - name: Build with retry
         uses: nick-fields/retry@v3
         with:
