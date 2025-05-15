@@ -53,14 +53,14 @@ on:
           - "android15_6.6_X_lts_"
         default: "android14_6.1_75_2024-05_"
       kernelsu_branch:
-        description: "选择SukiSU的功能代码分支"
+        description: "选择SukiSU分支"
         required: true
         type: choice
         options:
-          - Stable(标准)
-          - Dev(开发)
-          - Other(其他/指定)
-        default: Dev(开发)
+          - Stable
+          - Dev
+          - Other
+        default: Dev
       custom_version_suffix:
         description: '自定义内核版本后缀 (留空则随机生成)'
         required: false
