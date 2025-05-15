@@ -434,9 +434,6 @@ jobs:
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$GKI_DEFCONFIG_PATH"
 
-      - name: 检查mkcompile_h修改前
-        working-directory: ./${{ env.CONFIG }}/common/scripts
-        run: cat mkcompile_h || echo "mkcompile_h not found"
 
       - name: 配置内核版本及时间戳
         working-directory: ./${{ env.CONFIG }}
@@ -471,10 +468,6 @@ jobs:
               sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" "$KLEAF_STAMP_BZL_PATH_CHECK"
             fi
           fi
-      
-      - name: 检查mkcompile_h修改后
-        working-directory: ./${{ env.CONFIG }}/common/scripts
-        run: cat mkcompile_h || echo "mkcompile_h not found"
 
       - name: 重试构建
         uses: nick-fields/retry@v3
