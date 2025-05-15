@@ -1,67 +1,69 @@
-name: Cleanup Old Workflow Runs (中文名：清理旧的工作流运行记录)
-
+name: 清理旧的工作流运行记录
 on:
   schedule:
-    # 您的原始YAML中设置的是 '0 */24 * * *' (每天UTC时间的00:00执行一次)。
-    # 您之前的注释提到“每12小时执行一次”。如果您希望每12小时，请使用 '0 */12 * * *'。
-    # 这里我根据您最初YAML文件中的实际cron设置。
     - cron: '0 */24 * * *'
-  workflow_dispatch: # 允许手动触发此清理工作流，方便测试或立即执行
+  workflow_dispatch:
+    inputs:
+      days:
+        description: '为每个工作流保留的运行记录天数'
+        required: true
+        default: '7'
+        type: string
+      minimum_runs:
+        description: '为每个工作流保留的最小运行次数'
+        required: true
+        default: '6'
+        type: string
+      delete_workflow_pattern:
+        description: '要清理的工作流名称或文件名 (如果未设置，则针对所有工作流)'
+        required: false
+        type: string
+      delete_workflow_by_state_pattern:
+        description: '按工作流状态筛选: active, deleted, disabled_fork, disabled_inactivity, disabled_manually'
+        required: false
+        default: "ALL"
+        type: choice
+        options:
+          - "ALL"
+          - active
+          - deleted
+          - disabled_inactivity
+          - disabled_manually
+      delete_run_by_conclusion_pattern:
+        description: '按运行结论移除运行记录: action_required, cancelled, failure, skipped, success'
+        required: false
+        default: "ALL"
+        type: choice
+        options:
+          - "ALL"
+          - "Unsuccessful: action_required,cancelled,failure,skipped"
+          - action_required
+          - cancelled
+          - failure
+          - skipped
+          - success
+      dry_run:
+        description: '记录模拟的更改，不执行实际删除操作'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
-  cleanup_runs: # 您可以将job ID命名为 del_runs 如同 Mattraks 文档中的示例
-    name: Keep Latest 5 Runs Per Workflow (中文名：每个工作流保留最新的5次运行)
+  cleanup_workflow_runs:
+    name: 删除旧的工作流运行记录作业
     runs-on: ubuntu-latest
-    # 根据 Mattraks/delete-workflow-runs@v2 文档中的示例，
-    # 使用默认的 GITHUB_TOKEN 时需要 actions:write 和 contents:read 权限。
     permissions:
       actions: write
       contents: read
-
     steps:
-      - name: Delete workflow runs (中文名：删除旧的工作流运行记录)
+      - name: 运行 Mattraks 删除工作流运行记录操作
         uses: Mattraks/delete-workflow-runs@v2
         with:
-          # 使用 GitHub Actions 自动提供的 GITHUB_TOKEN。
-          # Mattraks 文档中也指明了需要适当的权限 (已在 job 级别设置)。
-          # github.token 和 secrets.GITHUB_TOKEN 在这里是等效的。
           token: ${{ github.token }}
-
-          # 指定要操作的仓库，默认为当前仓库。
           repository: ${{ github.repository }}
-
-          # 保留运行记录的天数。
-          # 为了严格按数量保留（仅保留最新的5个），我们将此设置为0。
-          # 这意味着所有完成的运行记录都会被考虑删除，除非它们是受 keep_minimum_runs 保护的。
-          retain_days: 0
-
-          # 为每个工作流保留的最小运行次数。
-          # 您希望保留5个。
-          keep_minimum_runs: 5
-
-          # --- 以下是 Mattraks/delete-workflow-runs@v2 的其他可选参数 ---
-          # --- 您可以根据需要取消注释并进行配置 ---
-
-          # 要清理的特定工作流的名称或文件名。如果未设置，则针对所有工作流。
-          # delete_workflow_pattern: ""
-
-          # 按工作流状态过滤。默认：'ALL'。
-          # 可用值: active, deleted, disabled_fork, disabled_inactivity, disabled_manually。
-          # 可以使用逗号分隔的列表来匹配多个值。
-          # delete_workflow_by_state_pattern: 'ALL'
-
-          # 根据运行结论移除运行记录。默认：'ALL'。
-          # 可用值: action_required, cancelled, failure, skipped, success。
-          # 可以使用逗号分隔的列表来匹配多个值。
-          # delete_run_by_conclusion_pattern: 'ALL'
-
-          # 模拟将要进行的更改，但不会实际执行删除操作。
-          # 进行测试时可以取消注释此行，设置为 true。
-          # dry_run: false
-
-          # 如果为 true，当运行记录附加到一个现有的分支时，将跳过删除该工作流的运行记录。
-          # 设置为 true 可以避免检查运行 (check runs) 被删除，从而导致检查不再显示。(不包括 main 分支)
-          # check_branch_existence: false
-
-          # 如果为 true，将检查运行记录是否链接到拉取请求 (Pull Request)。
-          # check_pullrequest_exist: false
+          retain_days: ${{ github.event_name == 'schedule' && 0 || github.event.inputs.days }}
+          keep_minimum_runs: ${{ github.event_name == 'schedule' && 5 || github.event.inputs.minimum_runs }}
+          delete_workflow_pattern: ${{ github.event_name == 'schedule' && '' || github.event.inputs.delete_workflow_pattern }}
+          delete_workflow_by_state_pattern: ${{ github.event_name == 'schedule' && 'ALL' || github.event.inputs.delete_workflow_by_state_pattern }}
+          delete_run_by_conclusion_pattern: ${{ github.event_name == 'schedule' && 'ALL' || (startsWith(github.event.inputs.delete_run_by_conclusion_pattern, 'Unsuccessful:') && 'action_required,cancelled,failure,skipped' || github.event.inputs.delete_run_by_conclusion_pattern) }}
+          dry_run: ${{ github.event_name == 'schedule' && false || github.event.inputs.dry_run }}
