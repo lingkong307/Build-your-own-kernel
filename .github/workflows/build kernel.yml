@@ -1,4 +1,4 @@
-name: A编译内核
+name: 编译内核
 permissions:
   contents: write
   actions: write
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       kernel_to_build:
-        description: "选择要编译的内核版本 (安卓版本_内核版本_子级别_OS补丁级别_修订号)"
+        description: "选择要编译的内核版本"
         required: true
         type: choice
         options:
@@ -66,27 +66,27 @@ on:
         required: false
         type: string
       use_zram:
-        description: '是否开启增加更多ZRAM算法?'
+        description: '是否开启更多ZRAM算法'
         required: true
         type: boolean
         default: true
       use_kpm:
-        description: '是否开启KPM功能?'
+        description: '是否开启KPM功能'
         required: true
         type: boolean
         default: true
 
 jobs:
   determine_sukisu_version:
-    name: 获取 SukiSU 版本信息
+    name: 获取SukiSU版本
     runs-on: ubuntu-latest
     outputs:
       job_name_suffix: ${{ steps.calculate_version.outputs.job_suffix }}
       sukisu_version: ${{ steps.calculate_version.outputs.suki_version_actual }}
     steps:
-      - name: 安装 Git
+      - name: 安装Git
         run: sudo apt-get update && sudo apt-get install -y git
-      - name: 计算 SukiSU 版本号
+      - name: 计算SukiSU版本号
         id: calculate_version
         shell: bash
         run: |
@@ -114,7 +114,7 @@ jobs:
           echo "suki_version_actual=${suki_version_actual_for_output}" >> $GITHUB_OUTPUT
 
   build_kernel:
-    name: 编译内核(SukiSU)${{ github.event.inputs.kernel_to_build }}${{ needs.determine_sukisu_version.outputs.job_name_suffix }}
+    name: 编译内核 ${{ github.event.inputs.kernel_to_build }}${{ needs.determine_sukisu_version.outputs.job_name_suffix }}
     needs: determine_sukisu_version
     runs-on: ubuntu-latest
     env:
@@ -124,7 +124,7 @@ jobs:
       SUKI_VERSION_NUM_FROM_PREVIOUS_JOB: ${{ needs.determine_sukisu_version.outputs.sukisu_version }}
 
     steps:
-      - name: Parse Kernel Selection and Set Parameters
+      - name: 解析内核选择
         id: parse_kernel
         run: |
           IFS='_' read -r av kv sl opl rev_raw <<< "${{ github.event.inputs.kernel_to_build }}"
@@ -134,7 +134,7 @@ jobs:
           echo "SELECTED_OS_PATCH_LEVEL=$opl" >> $GITHUB_ENV
           rev="${rev_raw:-}"
           echo "SELECTED_REVISION=$rev" >> $GITHUB_ENV
-      - name: Generate Kernel Suffixes (for Kernel Name and Artifact Name)
+      - name: 生成内核后缀
         id: generate_suffixes
         env:
           USER_PROVIDED_SUFFIX: ${{ github.event.inputs.custom_version_suffix }}
@@ -171,14 +171,14 @@ jobs:
           fi
           echo "FINAL_KERNEL_LOCAL_VERSION=${final_kernel_local_version}" >> "$GITHUB_ENV"
           echo "ARTIFACT_NAME_SUFFIX_PART=${artifact_name_suffix_part}" >> "$GITHUB_ENV"
-      - name: Adjust KPM setting
+      - name: 调整KPM设置
         run: |
           if [[ "${{ env.SELECTED_ANDROID_VERSION }}" == "android15" && "${{ env.SELECTED_KERNEL_VERSION }}" == "6.6" ]]; then
             echo "EFFECTIVE_USE_KPM=false" >> $GITHUB_ENV
           else
             echo "EFFECTIVE_USE_KPM=${{ github.event.inputs.use_kpm }}" >> $GITHUB_ENV
           fi
-      - name: Maximize build space
+      - name: 最大化构建空间
         uses: easimon/maximize-build-space@master
         with:
           root-reserve-mb: 8192
@@ -188,20 +188,20 @@ jobs:
           remove-android: "true"
           remove-haskell: "true"
           remove-codeql: "true"
-      - name: 设定 CONFIG 环境变量
+      - name: 设置CONFIG环境变量
         run: |
           JOB_CONFIG="${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}-${{ env.SELECTED_SUB_LEVEL }}"
           echo "CONFIG=$JOB_CONFIG" >> $GITHUB_ENV
-      - name: 安装 ccache
+      - name: 安装ccache和依赖
         run: sudo apt update && sudo apt upgrade -y && sudo apt install -y ccache python3 git curl
-      - name: 配置 ccache
+      - name: 配置ccache
         run: |
           mkdir -p ~/.cache/bazel
           ccache --version
           ccache --max-size=2G
           ccache --set-config=compression=true
           echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
-      - name: 从缓存中还原ccache
+      - name: 还原ccache缓存
         uses: actions/cache@v4
         with:
           path: ~/.ccache
@@ -216,31 +216,31 @@ jobs:
             kernel-build-tools
             mkbootimg
           key: toolchain-${{ runner.os }}-v1
-      - name: 下载工具链（如果未找到缓存）
+      - name: 下载工具链
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
           AOSP_MIRROR=https://android.googlesource.com
           BRANCH=main-kernel-build-2024 
           git clone $AOSP_MIRROR/kernel/prebuilts/build-tools -b $BRANCH --depth 1 kernel-build-tools
           git clone $AOSP_MIRROR/platform/system/tools/mkbootimg -b $BRANCH --depth 1 mkbootimg
-      - name: 设置环境变量
+      - name: 设置工具链环境变量
         run: |
           echo "AVBTOOL=$GITHUB_WORKSPACE/kernel-build-tools/linux-x86/bin/avbtool" >> $GITHUB_ENV
           echo "MKBOOTIMG=$GITHUB_WORKSPACE/mkbootimg/mkbootimg.py" >> $GITHUB_ENV
           echo "UNPACK_BOOTIMG=$GITHUB_WORKSPACE/mkbootimg/unpack_bootimg.py" >> $GITHUB_ENV
-      - name: 密钥设置——已经过mkppk修改
+      - name: 设置签名密钥
         env:
           BOOT_SIGN_KEY: ${{ secrets.BOOT_SIGN_KEY }}
         run: |
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 > ./kernel-build-tools/linux-x86/share/avb/testkey_rsa2048.pem
           echo "BOOT_SIGN_KEY_PATH=$GITHUB_WORKSPACE/kernel-build-tools/linux-x86/share/avb/testkey_rsa2048.pem" >> $GITHUB_ENV
-      - name: 安装仓库
+      - name: 安装repo工具
         run: |
           mkdir -p ./git-repo
           curl https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
           chmod a+rx ./git-repo/repo
           echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
-      - name: 克隆 AnyKernel3 和其他依赖项
+      - name: 克隆AnyKernel3及依赖
         run: |
           ANYKERNEL_BRANCH="gki-2.0"
           SUSFS_BRANCH="gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}"
@@ -249,7 +249,7 @@ jobs:
             (git clone https://gitlab.com/simonpunk/susfs4ksu.git -b main)
           git clone https://github.com/WildPlusKernel/kernel_patches.git 
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
-      - name: 初始化和同步内核源代码
+      - name: 初始化内核源码
         run: |
           mkdir -p "${{ env.CONFIG }}"
           cd "${{ env.CONFIG }}"
@@ -261,7 +261,7 @@ jobs:
             sed -i "s/\"${FORMATTED_BRANCH}\"/\"deprecated\/${FORMATTED_BRANCH}\"/g" $DEFAULT_MANIFEST_PATH
           fi
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
-      - name: 确定 SukiSU (功能代码) 的分支参数
+      - name: 确定SukiSU分支参数
         run: |
           KSU_SETUP_BRANCH_ARG=""
           if [[ "${{ github.event.inputs.kernelsu_branch }}" == "Stable(标准)" ]]; then
@@ -272,11 +272,11 @@ jobs:
             KSU_SETUP_BRANCH_ARG="" 
           fi
           echo "KSU_BRANCH_ARG=${KSU_SETUP_BRANCH_ARG}" >> $GITHUB_ENV
-      - name: 添加 SukiSU (根据选择的功能代码分支)
+      - name: 集成SukiSU
         run: |
           cd "${{ env.CONFIG }}"
           curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash ${{ env.KSU_BRANCH_ARG }}
-      - name: 设置 SukiSU 版本号
+      - name: 设置SukiSU版本号
         shell: bash
         run: |
           final_suki_version_num="${{ env.SUKI_VERSION_NUM_FROM_PREVIOUS_JOB }}"
@@ -284,7 +284,7 @@ jobs:
             final_suki_version_num="00000"
           fi
           echo "SUKI_VERSION_NUM=$final_suki_version_num" >> $GITHUB_ENV
-      - name: 为 SukiSU 安装 SUSFS 补丁
+      - name: 应用SUSFS补丁
         working-directory: ./${{ env.CONFIG }}
         run: |
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch ./common/ || echo "SUSFS common patch copy failed"
@@ -304,12 +304,12 @@ jobs:
             curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/fix/fix6.6.patch -o test.patch
             patch -p1 < test.patch || true
           fi
-      - name: 应用新的HOOKS补丁
+      - name: 应用Hooks补丁
         working-directory: ./${{ env.CONFIG }}/common
         run: |
           cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
           patch -p1 -F 3 < syscall_hooks.patch || echo "SukiSU hooks patch failed"
-      - name: 复制源文件&应用LZ4KD&ZSTDN补丁
+      - name: 应用ZRAM附加算法补丁
         if: ${{ github.event.inputs.use_zram == 'true' }}
         working-directory: ./${{ env.CONFIG }}/common
         run: |
@@ -327,7 +327,7 @@ jobs:
             cp "$LZ4K_OPLUS_PATCH_PATH" ./lz4k_oplus.patch 
             patch -p1 -F 3 < lz4k_oplus.patch || true
           fi
-      - name: 应用隐藏某特征的补丁
+      - name: 应用隐藏特征补丁
         working-directory: ./${{ env.CONFIG }}/common
         run: |
           PATCH_FILE="../../SukiSU_patch/69_hide_stuff.patch"
@@ -335,7 +335,7 @@ jobs:
             cp "$PATCH_FILE" ./hide_stuff.patch
             patch -p1 -F 3 < hide_stuff.patch || echo "Hide stuff patch failed"
           fi
-      - name: LZ4KD&Lz4k_oplus配置
+      - name: 配置ZRAM附加算法
         if: ${{ github.event.inputs.use_zram == 'true' }}
         run: |
           CONFIG_FILE_PATH="${{ env.CONFIG }}/common/arch/arm64/configs/gki_defconfig"
@@ -377,7 +377,7 @@ jobs:
             echo "CONFIG_CRYPTO_842=y" >> "$CONFIG_FILE_PATH"
             echo "CONFIG_CRYPTO_LZ4K_OPLUS=y" >> "$CONFIG_FILE_PATH"
           fi
-      - name: 添加SUSFS配置设置
+      - name: 添加SUSFS配置
         run: |
           GKI_DEFCONFIG_PATH="${{ env.CONFIG }}/common/arch/arm64/configs/gki_defconfig"
           BUILD_CONFIG_GKI_PATH="${{ env.CONFIG }}/common/build.config.gki"
@@ -414,7 +414,7 @@ jobs:
             if [ -f "./common/build.config.gki.aarch64" ]; then
                 echo "SKIP_KMI_STRICT_MODE_CHECK=1" >> "./common/build.config.gki.aarch64"
             elif [ -f "./common/build.config" ]; then
-                 echo "SKIP_KMI_STRICT_MODE_CHECK=1" >> "./common/build.config"
+                echo "SKIP_KMI_STRICT_MODE_CHECK=1" >> "./common/build.config"
             fi
           fi
           cd "$GITHUB_WORKSPACE"
@@ -434,11 +434,11 @@ jobs:
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$GKI_DEFCONFIG_PATH"
 
-      - name: 查看 mkcompile_h 修改前
+      - name: 检查mkcompile_h修改前
         working-directory: ./${{ env.CONFIG }}/common/scripts
         run: cat mkcompile_h || echo "mkcompile_h not found"
 
-      - name: 配置内核名称和编译时间戳
+      - name: 配置内核版本及时间戳
         working-directory: ./${{ env.CONFIG }}
         run: |
           GKI_DEFCONFIG_FILE_PATH="./common/arch/arm64/configs/gki_defconfig"
@@ -472,11 +472,11 @@ jobs:
             fi
           fi
       
-      - name: 查看 mkcompile_h 修改后
+      - name: 检查mkcompile_h修改后
         working-directory: ./${{ env.CONFIG }}/common/scripts
         run: cat mkcompile_h || echo "mkcompile_h not found"
 
-      - name: Build with retry
+      - name: 重试构建
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 45
@@ -494,7 +494,7 @@ jobs:
               tools/bazel build --disk_cache=/home/runner/.cache/bazel_disk_cache --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
             fi
             ccache --show-stats
-      - name: 修补 Image 文件 (KPM for SukiSU - Android 12/13)
+      - name: 修补Image (KPM, Android 12/13)
         if: env.EFFECTIVE_USE_KPM == 'true' && (env.SELECTED_ANDROID_VERSION == 'android12' || env.SELECTED_ANDROID_VERSION == 'android13') && env.SELECTED_KERNEL_VERSION != '6.6'
         run: |
           IMAGE_DIR_PATH="${{ env.CONFIG }}/out/${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}/dist"
@@ -508,7 +508,7 @@ jobs:
                 mv oImage Image
             fi
           fi
-      - name: 修补 Image 文件 (KPM for SukiSU - Android 14/15)
+      - name: 修补Image (KPM, Android 14/15)
         if: env.EFFECTIVE_USE_KPM == 'true' && (env.SELECTED_ANDROID_VERSION == 'android14' || env.SELECTED_ANDROID_VERSION == 'android15') && env.SELECTED_KERNEL_VERSION != '6.6'
         run: |
           IMAGE_DIR_PATH="${{ env.CONFIG }}/bazel-bin/common/kernel_aarch64/" 
@@ -522,7 +522,7 @@ jobs:
                 mv oImage Image
             fi
           fi
-      - name: 将内核 Image 复制到 AnyKernel3 目录
+      - name: 复制内核到AnyKernel3
         run: |
           IMAGE_SOURCE_PATH=""
           if [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android12" ] || [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android13" ]; then
@@ -541,7 +541,7 @@ jobs:
           else
             exit 1
           fi
-      - name: 上传 AnyKernel3 刷机包
+      - name: 上传AnyKernel3刷机包
         uses: actions/upload-artifact@v4
         with:
           name: |
