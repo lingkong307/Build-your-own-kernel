@@ -1,4 +1,4 @@
-name: A编译内核test
+name: A编译内核
 permissions:
   contents: write
   actions: write
@@ -69,7 +69,7 @@ on:
         description: "自定义内核编译时间戳 (格式: 'Day Mon DD HH:MM:SS UTC YYYY', 例如: 'Wed May 15 12:30:00 UTC 2025'). 留空则使用当前编译时间."
         required: false
         type: string
-        default: "Wed May 15 12:30:00 UTC 2025"
+        default: ""
       use_zram:
         description: '是否开启增加更多ZRAM算法?'
         required: true
@@ -494,10 +494,7 @@ jobs:
           echo "KBUILD_BUILD_TIMESTAMP_INFO: 同时设置 KBUILD_BUILD_TIMESTAMP 为: $DESIRED_HUMAN_READABLE_TIMESTAMP"
           # --- 新增逻辑结束 ---
           
-          # --- 原有的 perl 命令 (用户要求保留) ---
-          # perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Mon Jan 1 00:00:00 UTC 2024"}' ./common/scripts/mkcompile_h
-          
-          # --- 原有的 Bazel/Kleaf 相关修改逻辑 (保持不变) ---
+          # --- 原有的 Bazel/Kleaf 相关修改逻辑 (保持不变, 之前的 perl 命令已根据您的要求在本轮修改中被移除) ---
           BUILD_SCRIPT_PATH_CHECK="./build/build.sh" 
           if [ ! -f "$BUILD_SCRIPT_PATH_CHECK" ]; then 
             COMMON_BAZEL_PATH_CHECK="./common/BUILD.bazel"
@@ -512,11 +509,11 @@ jobs:
           fi
           # --- 原有逻辑结束 ---
        
-      - name: 查看 mkcompile_h 修改后 # 用户要求保留此步骤
+      - name: 查看 mkcompile_h 修改后
         working-directory: ./${{ env.CONFIG }}/common/scripts
         run: cat mkcompile_h || echo "mkcompile_h not found"
 
-      - name: 验证编译时间戳环境变量 # 新增验证步骤
+      - name: 验证编译时间戳环境变量
         run: |
           echo "== 编译时间戳环境变量检查 (编译前) =="
           echo "用户输入 (custom_build_timestamp): ${{ github.event.inputs.custom_build_timestamp }}"
@@ -548,7 +545,7 @@ jobs:
             fi
             ccache --show-stats
 
-      - name: 检查生成的 compile.h 内容 (尝试) # 新增验证步骤 (改进了 Bazel 查找逻辑)
+      - name: 检查生成的 compile.h 内容 (尝试)
         working-directory: ./${{ env.CONFIG }}
         env:
           EXPECTED_KBUILD_TIMESTAMP: ${{ env.KBUILD_BUILD_TIMESTAMP }}
@@ -556,62 +553,39 @@ jobs:
           echo "== compile.h 内容检查 (编译后) =="
           echo "本应使用的 KBUILD_BUILD_TIMESTAMP 是: ${EXPECTED_KBUILD_TIMESTAMP:-未传递到此步骤的环境变量中}"
           
-          COMPILE_H_FILE_PATH=""
-          
-          echo "尝试在输出目录中查找 compile.h 或 utsrelease.h..."
-          # 对于 Bazel/Kleaf，在 bazel-out 中进行更广泛的搜索
-          # 对于 build.sh，在 out 中搜索
-          if [ -f "./build/build.sh" ]; then # build.sh 方式
-            SEARCH_ROOT="./out"
-            echo "检测到 build.sh 构建系统. 在 '$SEARCH_ROOT' 目录下搜索..."
-          else # Bazel/Kleaf 方式
-            SEARCH_ROOT="./bazel-out"
-            # 如果 bazel-out 不存在，尝试 bazel-bin (旧版或特定配置可能用)
-            if [ ! -d "$SEARCH_ROOT" ]; then
-              SEARCH_ROOT="./bazel-bin"
-            fi
-            echo "检测到 Bazel (kleaf) 构建系统. 在 '$SEARCH_ROOT' 目录下搜索..."
-          fi
+          echo "尝试在输出目录中广泛搜索 compile.h 或 utsrelease.h (最多显示5个匹配项)..."
+          FOUND_FILES_LIST=()
+          # 使用 find 查找所有可能的 compile.h 和 utsrelease.h
+          # 将结果存储到数组中，同时处理路径中的空格等特殊字符
+          while IFS= read -r -d $'\0' file; do
+            FOUND_FILES_LIST+=("$file")
+          done < <(find . \( -path "./out/*" -o -path "./bazel-out/*" -o -path "./bazel-bin/*" \) -path "*/include/generated/*" \( -name "compile.h" -o -name "utsrelease.h" \) -print0)
 
-          if [ -d "$SEARCH_ROOT" ]; then
-            COMPILE_H_FILE_PATH=$(find "$SEARCH_ROOT" -path "*/include/generated/compile.h" -print -quit 2>/dev/null)
-            if [[ -z "$COMPILE_H_FILE_PATH" ]]; then
-              COMPILE_H_FILE_PATH=$(find "$SEARCH_ROOT" -path "*/include/generated/utsrelease.h" -print -quit 2>/dev/null)
-            fi
+          if [ ${#FOUND_FILES_LIST[@]} -eq 0 ]; then
+            echo "::error:: 未能在预期的输出路径中找到任何 compile.h 或 utsrelease.h 文件。"
           else
-            echo "::warning:: 主要搜索目录 '$SEARCH_ROOT' 不存在."
-          fi
-          
-          # 如果在特定搜索目录下没找到，尝试在当前工作目录 (${{ env.CONFIG }}) 下更广泛地搜索
-          if [[ -z "$COMPILE_H_FILE_PATH" ]]; then
-            echo "在主要搜索目录未找到，尝试在 ${{ env.CONFIG }} 内更广泛地搜索..."
-            COMPILE_H_FILE_PATH=$(find . -path "*/include/generated/compile.h" -print -quit 2>/dev/null)
-            if [[ -z "$COMPILE_H_FILE_PATH" ]]; then
-              COMPILE_H_FILE_PATH=$(find . -path "*/include/generated/utsrelease.h" -print -quit 2>/dev/null)
-            fi
-          fi
-
-          if [[ -n "$COMPILE_H_FILE_PATH" && -f "$COMPILE_H_FILE_PATH" ]]; then
-            echo "成功找到头文件: $PWD/$COMPILE_H_FILE_PATH" # $PWD 是 ./${{ env.CONFIG }}
-            echo "--- $COMPILE_H_FILE_PATH 的内容 ---"
-            cat "$COMPILE_H_FILE_PATH"
-            echo "------------------------------------"
-            if [[ -n "${EXPECTED_KBUILD_TIMESTAMP}" ]]; then
-              TIMESTAMP_PART_TO_CHECK=$(echo "$EXPECTED_KBUILD_TIMESTAMP" | awk '{print $2 " " $3}') # 例如 "May 15"
-              TIMESTAMP_PART_TO_CHECK_FULL=$(echo "$EXPECTED_KBUILD_TIMESTAMP" | awk '{print $2 " " $3 " " $4 " " $5 " " $6}')
-
-              if grep -Fq "$TIMESTAMP_PART_TO_CHECK_FULL" "$COMPILE_H_FILE_PATH"; then
-                echo "INFO: 预期的完整时间戳 ('$TIMESTAMP_PART_TO_CHECK_FULL') 在 $COMPILE_H_FILE_PATH 中找到。"
-              elif grep -Fq "$TIMESTAMP_PART_TO_CHECK" "$COMPILE_H_FILE_PATH"; then
-                echo "INFO: 预期的部分时间戳 ('$TIMESTAMP_PART_TO_CHECK') 在 $COMPILE_H_FILE_PATH 中找到。"
+            echo "找到了 ${#FOUND_FILES_LIST[@]} 个可能的 compile.h/utsrelease.h 文件:"
+            FILE_COUNT=0
+            for file_path in "${FOUND_FILES_LIST[@]}"; do
+              FILE_COUNT=$((FILE_COUNT + 1))
+              echo "--- 文件 $FILE_COUNT: $PWD/$file_path 的内容 ---"
+              cat "$file_path"
+              echo "------------------------------------"
+              if [[ -n "${EXPECTED_KBUILD_TIMESTAMP}" ]]; then
+                TIMESTAMP_PART_TO_CHECK_FULL=$(echo "$EXPECTED_KBUILD_TIMESTAMP" | awk '{print $2 " " $3 " " $4 " " $5 " " $6}')
+                if grep -Fq "$TIMESTAMP_PART_TO_CHECK_FULL" "$file_path"; then
+                  echo "INFO: 预期的完整时间戳 ('$TIMESTAMP_PART_TO_CHECK_FULL') 在 $file_path 中找到。"
+                else
+                  echo "::warning:: 未在 $file_path 中找到预期的完整时间戳 ('$TIMESTAMP_PART_TO_CHECK_FULL')。请检查上面打印的内容。"
+                fi
               else
-                echo "::warning:: 未在 $COMPILE_H_FILE_PATH 中找到预期的部分或完整时间戳。请检查上面打印的内容。"
+                echo "::warning:: EXPECTED_KBUILD_TIMESTAMP 未传递给此脚本，无法自动验证时间戳内容。"
               fi
-            else
-              echo "::warning:: EXPECTED_KBUILD_TIMESTAMP 未传递给此脚本，无法自动验证时间戳内容。"
-            fi
-          else
-            echo "::error:: 未能在预期的输出路径中找到 compile.h 或 utsrelease.h。构建可能失败或输出结构不同。"
+              if [ "$FILE_COUNT" -ge 5 ]; then
+                echo "INFO: 已显示前5个找到的文件内容。如果还有更多，请在本地构建环境中检查。"
+                break 
+              fi
+            done
           fi
         if: always()
 
