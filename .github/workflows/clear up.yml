@@ -2,41 +2,23 @@ name: Cleanup Old Workflow Runs (中文名：清理旧的工作流运行记录)
 
 on:
   schedule:
-    # 您的注释中提到“每12小时执行一次”，但cron表达式 '0 */24 * * *' 是“每24小时在第0分钟执行一次”（即每天的UTC时间00:00）。
-    # 如果您确实希望每12小时执行一次，应使用 '0 */12 * * *' (例如在UTC时间的 00:00 和 12:00 执行)。
-    # 这里我保留了您原始的 cron 设置。
-    - cron: '0 */24 * * *'
-  workflow_dispatch: # 允许手动触发此清理工作流，方便测试或立即执行
+    - cron: '0 */24 * * *' # 每天的UTC时间00:00执行
+  workflow_dispatch:
 
 jobs:
   cleanup_runs:
     name: Keep Latest 5 Runs Per Workflow (中文名：每个工作流保留最新的5次运行)
     runs-on: ubuntu-latest
     permissions:
-      actions: write # 非常重要：需要此权限 GITHUB_TOKEN 才能删除 workflow runs
+      actions: write
 
     steps:
       - name: Delete old workflow runs (中文名：删除旧的工作流运行记录)
-        # 使用官方维护的 Action，并指定一个较新的稳定版本 (例如 @v4)
-        uses: actions/delete-workflow-runs@v4
+        # 尝试使用更具体的版本标签，例如 v4.2.0 (请检查最新版本)
+        uses: actions/delete-workflow-runs@v4.2.0
         with:
-          # 使用 GitHub Actions 自动提供的 GITHUB_TOKEN
-          # 这个 token 需要 job 级别的 `permissions: actions: write` 才能删除运行记录。
           token: ${{ secrets.GITHUB_TOKEN }}
-
-          # 指定要操作的仓库，默认为当前仓库
           repository: ${{ github.repository }}
-
-          # 保留运行记录的天数。
-          # 为了严格按数量保留（仅保留最新的5个），我们将此设置为0。
-          # 注意：参数名从 retain_days 变为 retain-days
           retain-days: 0
-
-          # 为每个工作流保留的最小运行次数。
-          # 注意：参数名从 keep_minimum_runs 变为 keep-minimum-runs
           keep-minimum-runs: 5
-
-          # 可选参数 (如果需要，请取消注释并设置)：
-          # delete-workflow-pattern: "" # 针对特定模式的工作流名称进行清理，留空则处理所有工作流。
-          # delete-run-by-conclusion-pattern: "" # 根据运行结论（如 'success', 'failure'）来删除，留空则不按结论筛选。
-          # dry-run: true # 进行测试时可以取消注释此行。它会列出将要删除的运行记录，但不会实际删除。
+          # dry-run: true # 测试时可以取消注释
