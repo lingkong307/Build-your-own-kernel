@@ -435,8 +435,8 @@ jobs:
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$GKI_DEFCONFIG_PATH"
 
       - name: 查看 mkcompile_h 修改前
-  working-directory: ./${{ env.CONFIG }}/common/scripts
-  run: cat mkcompile_h || echo "mkcompile_h not found"
+        working-directory: ./${{ env.CONFIG }}/common/scripts
+        run: cat mkcompile_h || echo "mkcompile_h not found"
 
       - name: 配置内核名称和编译时间戳
         working-directory: ./${{ env.CONFIG }}
@@ -473,8 +473,8 @@ jobs:
           fi
       
       - name: 查看 mkcompile_h 修改后
-  working-directory: ./${{ env.CONFIG }}/common/scripts
-  run: cat mkcompile_h || echo "mkcompile_h not found"
+        working-directory: ./${{ env.CONFIG }}/common/scripts
+        run: cat mkcompile_h || echo "mkcompile_h not found"
 
       - name: Build with retry
         uses: nick-fields/retry@v3
