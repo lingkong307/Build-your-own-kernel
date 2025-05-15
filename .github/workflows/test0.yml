@@ -52,7 +52,7 @@ on:
           - "android15_6.6_77_2025-03_"
           - "android15_6.6_X_lts_"
         default: "android14_6.1_75_2024-05_"
-      kernelsu_branch: # 用户要求保留此项
+      kernelsu_branch:
         description: "选择SukiSU分支"
         required: true
         type: choice
@@ -65,13 +65,11 @@ on:
         description: '自定义内核版本后缀 (留空则随机生成)'
         required: false
         type: string
-      # --- 新增输入项：自定义编译时间戳 ---
       custom_build_timestamp:
         description: "自定义内核编译时间戳 (格式: 'Day Mon DD HH:MM:SS UTC YYYY', 例如: 'Wed May 15 12:30:00 UTC 2025'). 留空则使用当前编译时间."
         required: false
         type: string
-        default: "Wed May 15 12:30:00 UTC 2025"
-      # --- 新增输入项结束 ---
+        default: ""
       use_zram:
         description: '是否开启增加更多ZRAM算法?'
         required: true
@@ -268,18 +266,18 @@ jobs:
             sed -i "s/\"${FORMATTED_BRANCH}\"/\"deprecated\/${FORMATTED_BRANCH}\"/g" $DEFAULT_MANIFEST_PATH
           fi
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
-      - name: 确定 SukiSU (功能代码) 的分支参数 # 用户要求保留此步骤
+      - name: 确定 SukiSU (功能代码) 的分支参数
         run: |
           KSU_SETUP_BRANCH_ARG=""
-          if [[ "${{ github.event.inputs.kernelsu_branch }}" == "Stable" ]]; then # 简化选项名称匹配
+          if [[ "${{ github.event.inputs.kernelsu_branch }}" == "Stable" ]]; then
             KSU_SETUP_BRANCH_ARG="" 
-          elif [[ "${{ github.event.inputs.kernelsu_branch }}" == "Dev" ]]; then # 简化选项名称匹配
+          elif [[ "${{ github.event.inputs.kernelsu_branch }}" == "Dev" ]]; then
             KSU_SETUP_BRANCH_ARG="-s susfs-dev" 
-          elif [[ "${{ github.event.inputs.kernelsu_branch }}" == "Other" ]]; then # 简化选项名称匹配
+          elif [[ "${{ github.event.inputs.kernelsu_branch }}" == "Other" ]]; then
             KSU_SETUP_BRANCH_ARG="" 
           fi
           echo "KSU_BRANCH_ARG=${KSU_SETUP_BRANCH_ARG}" >> $GITHUB_ENV
-      - name: 添加 SukiSU (根据选择的功能代码分支) # 用户要求保留此步骤名称
+      - name: 添加 SukiSU (根据选择的功能代码分支)
         run: |
           cd "${{ env.CONFIG }}"
           curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash ${{ env.KSU_BRANCH_ARG }}
@@ -441,7 +439,7 @@ jobs:
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$GKI_DEFCONFIG_PATH"
 
-      - name: 查看 mkcompile_h 修改前 # 用户要求保留此步骤
+      - name: 查看 mkcompile_h 修改前
         working-directory: ./${{ env.CONFIG }}/common/scripts
         run: cat mkcompile_h || echo "mkcompile_h not found"
 
@@ -474,14 +472,10 @@ jobs:
           DESIRED_HUMAN_READABLE_TIMESTAMP=""
 
           if [[ -n "$USER_PROVIDED_TIMESTAMP_STRING" ]]; then
-            # 尝试将用户输入转换为 epoch seconds
-            # 注意: date -d 对输入格式敏感，用户需按 "Day Mon DD HH:MM:SS UTC YYYY" 格式输入, 例如 "Wed May 15 12:30:00 UTC 2025"
             CONVERTED_EPOCH=$(date -u -d "$USER_PROVIDED_TIMESTAMP_STRING" +%s 2>/dev/null)
             if [[ -n "$CONVERTED_EPOCH" && "$CONVERTED_EPOCH" =~ ^[0-9]+$ ]]; then
               FINAL_EPOCH_SECONDS="$CONVERTED_EPOCH"
-              # 为了 KBUILD_BUILD_TIMESTAMP，我们仍然使用用户提供的原始字符串（如果它被成功解析为纪元秒）
-              # 或者从纪元秒重新生成以确保格式一致性
-              DESIRED_HUMAN_READABLE_TIMESTAMP=$(date -u -d "@$FINAL_EPOCH_SECONDS" +"%a %b %d %H:%M:%S UTC %Y")
+              DESIRED_HUMAN_READABLE_TIMESTAMP=$(date -u -d "@$FINAL_EPOCH_SECONDS" +"%a %b %d %H:%M:%S UTC %Y") # 从epoch重新生成以保证格式
               echo "SOURCE_DATE_EPOCH_INFO: 使用用户提供的编译时间戳: $USER_PROVIDED_TIMESTAMP_STRING (解析后的Epoch: $FINAL_EPOCH_SECONDS, 用于KBUILD的格式化时间: $DESIRED_HUMAN_READABLE_TIMESTAMP)"
             else
               echo "::warning:: SOURCE_DATE_EPOCH_WARNING: 无法解析用户提供的时间戳 '$USER_PROVIDED_TIMESTAMP_STRING'. 将使用当前编译时间."
@@ -490,20 +484,18 @@ jobs:
               echo "SOURCE_DATE_EPOCH_INFO: 用户输入解析失败，使用当前编译时间: $DESIRED_HUMAN_READABLE_TIMESTAMP (Epoch: $FINAL_EPOCH_SECONDS)"
             fi
           else
-            # 用户未提供时间戳，使用当前的UTC epoch seconds
             FINAL_EPOCH_SECONDS=$(date -u +%s)
             DESIRED_HUMAN_READABLE_TIMESTAMP=$(date -u -d "@$FINAL_EPOCH_SECONDS" +"%a %b %d %H:%M:%S UTC %Y")
             echo "SOURCE_DATE_EPOCH_INFO: 用户未提供时间戳，使用当前编译时间: $DESIRED_HUMAN_READABLE_TIMESTAMP (Epoch: $FINAL_EPOCH_SECONDS)"
           fi
 
           echo "SOURCE_DATE_EPOCH=$FINAL_EPOCH_SECONDS" >> $GITHUB_ENV
-          # 同时设置 KBUILD_BUILD_TIMESTAMP
           echo "KBUILD_BUILD_TIMESTAMP=$DESIRED_HUMAN_READABLE_TIMESTAMP" >> $GITHUB_ENV
           echo "KBUILD_BUILD_TIMESTAMP_INFO: 同时设置 KBUILD_BUILD_TIMESTAMP 为: $DESIRED_HUMAN_READABLE_TIMESTAMP"
           # --- 新增逻辑结束 ---
-
+          
           # --- 原有的 perl 命令 (用户要求保留) ---
-          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Mon Jan 1 00:00:00 UTC 2024"}' ./common/scripts/mkcompile_h
+          # perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Mon Jan 1 00:00:00 UTC 2024"}' ./common/scripts/mkcompile_h
           
           # --- 原有的 Bazel/Kleaf 相关修改逻辑 (保持不变) ---
           BUILD_SCRIPT_PATH_CHECK="./build/build.sh" 
@@ -556,7 +548,7 @@ jobs:
             fi
             ccache --show-stats
 
-      - name: 检查生成的 compile.h 内容 (尝试) # 新增验证步骤
+      - name: 检查生成的 compile.h 内容 (尝试) # 新增验证步骤 (改进了 Bazel 查找逻辑)
         working-directory: ./${{ env.CONFIG }}
         env:
           EXPECTED_KBUILD_TIMESTAMP: ${{ env.KBUILD_BUILD_TIMESTAMP }}
@@ -565,63 +557,55 @@ jobs:
           echo "本应使用的 KBUILD_BUILD_TIMESTAMP 是: ${EXPECTED_KBUILD_TIMESTAMP:-未传递到此步骤的环境变量中}"
           
           COMPILE_H_FILE_PATH=""
-          SEARCH_PATTERNS=()
+          
+          echo "尝试在输出目录中查找 compile.h 或 utsrelease.h..."
+          # 对于 Bazel/Kleaf，在 bazel-out 中进行更广泛的搜索
+          # 对于 build.sh，在 out 中搜索
+          if [ -f "./build/build.sh" ]; then # build.sh 方式
+            SEARCH_ROOT="./out"
+            echo "检测到 build.sh 构建系统. 在 '$SEARCH_ROOT' 目录下搜索..."
+          else # Bazel/Kleaf 方式
+            SEARCH_ROOT="./bazel-out"
+            # 如果 bazel-out 不存在，尝试 bazel-bin (旧版或特定配置可能用)
+            if [ ! -d "$SEARCH_ROOT" ]; then
+              SEARCH_ROOT="./bazel-bin"
+            fi
+            echo "检测到 Bazel (kleaf) 构建系统. 在 '$SEARCH_ROOT' 目录下搜索..."
+          fi
 
-          if [ -f "./build/build.sh" ]; then
-            echo "检测到 build.sh 构建系统. 在 './out' 目录下搜索..."
-            # 对于 build.sh, 通常在 out/xxx/kernel-obj/include/generated/
-            # 或者 out/BRANCH/common/include/generated/ (如果 common 是内核源码目录)
-            SEARCH_PATTERNS+=("./out/*/kernel-obj/include/generated/compile.h")
-            SEARCH_PATTERNS+=("./out/*/kernel-obj/include/generated/utsrelease.h")
-            SEARCH_PATTERNS+=("./out/*/*/include/generated/compile.h") 
-            SEARCH_PATTERNS+=("./out/*/*/include/generated/utsrelease.h")
-            SEARCH_PATTERNS+=("./out/common/include/generated/compile.h")
-            SEARCH_PATTERNS+=("./out/common/include/generated/utsrelease.h")
+          if [ -d "$SEARCH_ROOT" ]; then
+            COMPILE_H_FILE_PATH=$(find "$SEARCH_ROOT" -path "*/include/generated/compile.h" -print -quit 2>/dev/null)
+            if [[ -z "$COMPILE_H_FILE_PATH" ]]; then
+              COMPILE_H_FILE_PATH=$(find "$SEARCH_ROOT" -path "*/include/generated/utsrelease.h" -print -quit 2>/dev/null)
+            fi
           else
-            echo "检测到 Bazel (kleaf) 构建系统. 在 './bazel-*' 目录下搜索..."
-            # 对于 Bazel, 通常在 bazel-bin 或 bazel-out
-            SEARCH_PATTERNS+=("./bazel-bin/common/arch/arm64/kernel_generated_headers/include/generated/compile.h")
-            SEARCH_PATTERNS+=("./bazel-bin/common/arch/arm64/kernel_generated_headers/include/generated/utsrelease.h")
-            SEARCH_PATTERNS+=("./bazel-out/*/bin/common/arch/arm64/kernel_generated_headers/include/generated/compile.h")
-            SEARCH_PATTERNS+=("./bazel-out/*/bin/common/arch/arm64/kernel_generated_headers/include/generated/utsrelease.h")
-            # 更通用的 bazel 路径，Kleaf经常把生成的头文件放在类似 ..._generated_headers 的地方
-            SEARCH_PATTERNS+=("./bazel-*/common/*/*_generated_headers/include/generated/compile.h")
-            SEARCH_PATTERNS+=("./bazel-*/common/*/*_generated_headers/include/generated/utsrelease.h")
-            SEARCH_PATTERNS+=("./bazel-*/kernel/include/generated/compile.h") # 有时可能更直接
-            SEARCH_PATTERNS+=("./bazel-*/kernel/include/generated/utsrelease.h")
+            echo "::warning:: 主要搜索目录 '$SEARCH_ROOT' 不存在."
           fi
           
-          echo "尝试在以下模式路径中查找 compile.h/utsrelease.h (相对于 ${{ env.CONFIG }}):"
-          for loc_pattern in "${SEARCH_PATTERNS[@]}"; do
-            echo "  - 正在尝试: $loc_pattern"
-            # 使用 find -print -quit 来获取第一个匹配项
-            FOUND_FILE=$(find . -path "$loc_pattern" -print -quit 2>/dev/null)
-            if [[ -n "$FOUND_FILE" && -f "$FOUND_FILE" ]]; then
-                COMPILE_H_FILE_PATH="$FOUND_FILE"
-                echo "    找到文件: $COMPILE_H_FILE_PATH"
-                break
+          # 如果在特定搜索目录下没找到，尝试在当前工作目录 (${{ env.CONFIG }}) 下更广泛地搜索
+          if [[ -z "$COMPILE_H_FILE_PATH" ]]; then
+            echo "在主要搜索目录未找到，尝试在 ${{ env.CONFIG }} 内更广泛地搜索..."
+            COMPILE_H_FILE_PATH=$(find . -path "*/include/generated/compile.h" -print -quit 2>/dev/null)
+            if [[ -z "$COMPILE_H_FILE_PATH" ]]; then
+              COMPILE_H_FILE_PATH=$(find . -path "*/include/generated/utsrelease.h" -print -quit 2>/dev/null)
             fi
-          done
+          fi
 
           if [[ -n "$COMPILE_H_FILE_PATH" && -f "$COMPILE_H_FILE_PATH" ]]; then
-            echo "成功找到头文件: $PWD/$COMPILE_H_FILE_PATH"
+            echo "成功找到头文件: $PWD/$COMPILE_H_FILE_PATH" # $PWD 是 ./${{ env.CONFIG }}
             echo "--- $COMPILE_H_FILE_PATH 的内容 ---"
             cat "$COMPILE_H_FILE_PATH"
             echo "------------------------------------"
             if [[ -n "${EXPECTED_KBUILD_TIMESTAMP}" ]]; then
-              # 尝试提取月份和日期进行部分匹配，例如 "May 15"
               TIMESTAMP_PART_TO_CHECK=$(echo "$EXPECTED_KBUILD_TIMESTAMP" | awk '{print $2 " " $3}') # 例如 "May 15"
-              # 如果时间字符串包含 "UTC"，也一并检查
-              if echo "$EXPECTED_KBUILD_TIMESTAMP" | grep -q "UTC"; then
-                 TIMESTAMP_PART_TO_CHECK_FULL=$(echo "$EXPECTED_KBUILD_TIMESTAMP" | awk '{print $2 " " $3 " " $4 " " $5 " " $6}') # 例如 "May 15 12:30:00 UTC 2025"
-              else
-                 TIMESTAMP_PART_TO_CHECK_FULL=$(echo "$EXPECTED_KBUILD_TIMESTAMP" | awk '{print $2 " " $3 " " $4 " " $5}')
-              fi
+              TIMESTAMP_PART_TO_CHECK_FULL=$(echo "$EXPECTED_KBUILD_TIMESTAMP" | awk '{print $2 " " $3 " " $4 " " $5 " " $6}')
 
-              if grep -Fq "$TIMESTAMP_PART_TO_CHECK" "$COMPILE_H_FILE_PATH" || grep -Fq "$TIMESTAMP_PART_TO_CHECK_FULL" "$COMPILE_H_FILE_PATH"; then
-                echo "INFO: 预期的部分时间戳 ('$TIMESTAMP_PART_TO_CHECK' 或 '$TIMESTAMP_PART_TO_CHECK_FULL') 在 $COMPILE_H_FILE_PATH 中找到。"
+              if grep -Fq "$TIMESTAMP_PART_TO_CHECK_FULL" "$COMPILE_H_FILE_PATH"; then
+                echo "INFO: 预期的完整时间戳 ('$TIMESTAMP_PART_TO_CHECK_FULL') 在 $COMPILE_H_FILE_PATH 中找到。"
+              elif grep -Fq "$TIMESTAMP_PART_TO_CHECK" "$COMPILE_H_FILE_PATH"; then
+                echo "INFO: 预期的部分时间戳 ('$TIMESTAMP_PART_TO_CHECK') 在 $COMPILE_H_FILE_PATH 中找到。"
               else
-                echo "::warning:: 未在 $COMPILE_H_FILE_PATH 中找到预期的部分时间戳 ('$TIMESTAMP_PART_TO_CHECK' 或 '$TIMESTAMP_PART_TO_CHECK_FULL')。请检查上面打印的内容。"
+                echo "::warning:: 未在 $COMPILE_H_FILE_PATH 中找到预期的部分或完整时间戳。请检查上面打印的内容。"
               fi
             else
               echo "::warning:: EXPECTED_KBUILD_TIMESTAMP 未传递给此脚本，无法自动验证时间戳内容。"
@@ -629,7 +613,7 @@ jobs:
           else
             echo "::error:: 未能在预期的输出路径中找到 compile.h 或 utsrelease.h。构建可能失败或输出结构不同。"
           fi
-        if: always() # 无论构建是否成功都运行此步骤
+        if: always()
 
       - name: 修补 Image 文件 (KPM for SukiSU - Android 12/13)
         if: env.EFFECTIVE_USE_KPM == 'true' && (env.SELECTED_ANDROID_VERSION == 'android12' || env.SELECTED_ANDROID_VERSION == 'android13') && env.SELECTED_KERNEL_VERSION != '6.6'
