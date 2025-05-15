@@ -114,7 +114,7 @@ jobs:
           echo "suki_version_actual=${suki_version_actual_for_output}" >> $GITHUB_OUTPUT
 
   build_kernel:
-    name: 内核编译 (SukiSU) - ${{ github.event.inputs.kernel_to_build }}${{ needs.determine_sukisu_version.outputs.job_name_suffix }}
+    name: 内核编译 - ${{ github.event.inputs.kernel_to_build }}${{ needs.determine_sukisu_version.outputs.job_name_suffix }}
     needs: determine_sukisu_version
     runs-on: ubuntu-latest
     env:
