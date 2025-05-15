@@ -60,7 +60,7 @@ on:
         description: "自定义内核编译时间戳"
         required: false
         type: string
-        default: ""
+        default: "Wed May 15 12:30:00 UTC 2025"
       use_zram:
         description: '是否开启增加更多ZRAM算法?'
         required: true
