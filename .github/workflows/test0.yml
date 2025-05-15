@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       kernel_to_build:
-        description: "选择要编译的内核版本 (安卓版本_内核版本_子级别_OS补丁级别_修订号)"
+        description: "选择要编译的内核版本"
         required: true
         type: choice
         options:
@@ -53,11 +53,11 @@ on:
           - "android15_6.6_X_lts_"
         default: "android14_6.1_75_2024-05_"
       custom_version_suffix:
-        description: '自定义内核版本后缀 (留空则随机生成)'
+        description: '自定义内核版本后缀留空随机生成'
         required: false
         type: string
       custom_build_timestamp:
-        description: "自定义内核编译时间戳 (格式: 'Day Mon DD HH:MM:SS UTC YYYY', 例如: 'Wed May 15 12:30:00 UTC 2025'). 留空则使用当前编译时间."
+        description: "自定义内核编译时间戳"
         required: false
         type: string
         default: ""
