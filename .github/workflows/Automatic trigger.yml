@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       target_branch_override:
-        description: "覆盖 'A编译内核' 的目标分支 (例如 main, dev)。留空则使用默认 'main'。"
+        description: "覆盖 'A内核编译' 的目标分支 (例如 main, dev)。留空则使用默认 'main'。"
         required: false
         type: string
       force_trigger:
@@ -102,7 +102,7 @@ jobs:
           fi
 
           if $SHOULD_TRIGGER_DOWNSTREAM_BUILD; then
-            echo "准备根据 '$TRIGGER_REASON' 触发 'A编译内核' 工作流..."
+            echo "准备根据 '$TRIGGER_REASON' 触发 'A内核编译' 工作流..."
             
             TARGET_REF="refs/heads/main" # 默认目标分支
             if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.target_branch_override }}" ]]; then
@@ -112,8 +112,8 @@ jobs:
               echo "使用默认目标分支: ${TARGET_REF}"
             fi
             
-            if gh workflow run "A编译内核" --ref "${TARGET_REF}"; then
-              echo "已成功发送触发命令给 'A编译内核' 工作流 (在分支 ${TARGET_REF} 上)。"
+            if gh workflow run "A内核编译" --ref "${TARGET_REF}"; then
+              echo "已成功发送触发命令给 'A内核编译' 工作流 (在分支 ${TARGET_REF} 上)。"
               
               # 只有当版本确实发生了更新时，才更新版本记录文件
               if $ACTUALLY_UPDATED; then
@@ -145,7 +145,7 @@ jobs:
                 echo "版本未实际更新 (例如，由于是强制触发且版本号不高，或版本号与上次相同)。不更新版本记录文件。"
               fi
             else
-              echo "::error::发送触发命令给 'A编译内核' 工作流失败。"
+              echo "::error::发送触发命令给 'A内核编译' 工作流失败。"
               exit 1 # 如果触发下游失败，也应该报错
             fi
           else
