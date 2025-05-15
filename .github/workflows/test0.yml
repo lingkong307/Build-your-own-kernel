@@ -70,7 +70,7 @@ on:
         description: "自定义内核编译时间戳 (格式: 'Day Mon DD HH:MM:SS UTC YYYY', 例如: 'Wed May 15 12:30:00 UTC 2025'). 留空则使用当前编译时间."
         required: false
         type: string
-        default: ""
+        default: "Wed May 15 12:30:00 UTC 2025"
       # --- 新增输入项结束 ---
       use_zram:
         description: '是否开启增加更多ZRAM算法?'
