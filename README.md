@@ -42,7 +42,7 @@ git clone https://github.com/Celestials316/Build-your-own-kernel.git
 ## 🙏 鸣谢 Thanks
 
 - [KernelSU](https://github.com/tiann/KernelSU)
-- [SukiSU](https://github.com/SukiSU)
+- [SukiSU-Ultra](https://github.com/ShirkNeko/SukiSU-Ultra)
 - 各位热心提供内核适配经验的大佬们！
 - GitHub Actions 社区编译脚本模板贡献者
 
