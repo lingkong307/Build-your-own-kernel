@@ -46,3 +46,8 @@ git clone https://github.com/Celestials316/Build-your-own-kernel.git
 - 各位热心提供内核适配经验的大佬们！
 - GitHub Actions 社区编译脚本模板贡献者
 
+
+<p align="center">
+  <img src="/structure.png" width="70%">
+</p>
+
