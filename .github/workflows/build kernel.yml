@@ -147,38 +147,38 @@ jobs:
           SELECTED_AV_ENV: ${{ env.SELECTED_ANDROID_VERSION }}
           SELECTED_KV_ENV: ${{ env.SELECTED_KERNEL_VERSION }}
         run: |
-          _final_kernel_local_version=""
-          _artifact_name_suffix_part=""
+          final_kernel_local_version=""
+          artifact_name_suffix_part=""
           current_date=$(date +%Y%m%d)
-          if [[ -n "${{ github.event.inputs.custom_version_suffix }}" ]]; then
-            _final_kernel_local_version="${{ github.event.inputs.custom_version_suffix }}"
-            _artifact_name_suffix_part="${{ github.event.inputs.custom_version_suffix }}"
+          if [[ -n "$USER_PROVIDED_SUFFIX" ]]; then
+            final_kernel_local_version="$USER_PROVIDED_SUFFIX"
+            artifact_name_suffix_part="$USER_PROVIDED_SUFFIX"
           else
             kernel_fixed_part_for_localversion=""
-            if [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android12" ] && [ "${{ env.SELECTED_KERNEL_VERSION }}" == "5.10" ]; then
+            if [ "$SELECTED_AV_ENV" == "android12" ] && [ "$SELECTED_KV_ENV" == "5.10" ]; then
               kernel_fixed_part_for_localversion="-android12-9"
-            elif [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android13" ] && [ "${{ env.SELECTED_KERNEL_VERSION }}" == "5.10" ]; then
+            elif [ "$SELECTED_AV_ENV" == "android13" ] && [ "$SELECTED_KV_ENV" == "5.10" ]; then
               kernel_fixed_part_for_localversion="-android13-9"
-            elif [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android13" ] && [ "${{ env.SELECTED_KERNEL_VERSION }}" == "5.15" ]; then
+            elif [ "$SELECTED_AV_ENV" == "android13" ] && [ "$SELECTED_KV_ENV" == "5.15" ]; then
               kernel_fixed_part_for_localversion="-android13-8"
-            elif [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android14" ] && [ "${{ env.SELECTED_KERNEL_VERSION }}" == "6.1" ]; then
+            elif [ "$SELECTED_AV_ENV" == "android14" ] && [ "$SELECTED_KV_ENV" == "6.1" ]; then
               kernel_fixed_part_for_localversion="-android14-11"
-            elif [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android15" ] && [ "${{ env.SELECTED_KERNEL_VERSION }}" == "6.6" ]; then
+            elif [ "$SELECTED_AV_ENV" == "android15" ] && [ "$SELECTED_KV_ENV" == "6.6" ]; then
               kernel_fixed_part_for_localversion="-android15-8"
             else 
-              kernel_fixed_part_for_localversion="-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }//./_}-custom"
+              kernel_fixed_part_for_localversion="-${SELECTED_AV_ENV}-${SELECTED_KV_ENV//./_}-custom"
             fi
             prefix1="gd"
             prefix2="ab"
             random_hex_11=$(head /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 11 || true)
             random_digits_8=$(head /dev/urandom | LC_ALL=C tr -dc '0-9' | head -c 8 || true)
-            _final_kernel_local_version="${kernel_fixed_part_for_localversion}-${prefix1}${random_hex_11}-${prefix2}${random_digits_8}"
-            _artifact_name_suffix_part="-${current_date}"
+            final_kernel_local_version="${kernel_fixed_part_for_localversion}-${prefix1}${random_hex_11}-${prefix2}${random_digits_8}"
+            artifact_name_suffix_part="-${current_date}"
           fi
-          echo "FINAL_KERNEL_LOCAL_VERSION=${_final_kernel_local_version}" >> "$GITHUB_ENV"
-          echo "ARTIFACT_NAME_SUFFIX_PART=${_artifact_name_suffix_part}" >> "$GITHUB_ENV"
-          echo "final_kernel_local_version_for_release_body=${_final_kernel_local_version}" >> $GITHUB_OUTPUT
-          echo "artifact_name_suffix_part_for_release_body=${_artifact_name_suffix_part}" >> $GITHUB_OUTPUT
+          echo "FINAL_KERNEL_LOCAL_VERSION=${final_kernel_local_version}" >> "$GITHUB_ENV"
+          echo "ARTIFACT_NAME_SUFFIX_PART=${artifact_name_suffix_part}" >> "$GITHUB_ENV"
+          echo "final_kernel_local_version_for_release_body=${final_kernel_local_version}" >> $GITHUB_OUTPUT
+          echo "artifact_name_suffix_part_for_release_body=${artifact_name_suffix_part}" >> $GITHUB_OUTPUT
 
       - name: 调整KPM设置
         run: |
