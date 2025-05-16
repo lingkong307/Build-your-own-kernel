@@ -21,7 +21,7 @@
 
 ## ⚙️ 特性一览
 
-- 支持构建 **SukiSU Ultra** 的kernelsu分支
+- 支持构建kernelsu的分支 **SukiSU Ultra**
 - 支持 GitHub Actions 云端自动构建
 - 精简 defconfig，删除多余模块
 - 可通过 AnyKernel3 封装快速刷入
