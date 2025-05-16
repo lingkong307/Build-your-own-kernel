@@ -1,5 +1,5 @@
 name: 内核编译
-permissions:
+permissions: # 全局权限
   contents: write
   actions: write
 on:
@@ -75,11 +75,14 @@ on:
         required: true
         type: boolean
         default: true
-      upload_to_release: # <--- 新增：上传开关
-        description: '是否上传到 GitHub Release'
+      upload_to_release:
+        description: '是否上传到 GitHub Release (选择 "true" 或 "false")'
         required: true
-        type: boolean
-        default: true
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+        default: 'true'
 
 jobs:
   determine_sukisu_version:
@@ -119,11 +122,10 @@ jobs:
           echo "suki_version_actual=${suki_version_actual_for_output}" >> $GITHUB_OUTPUT
 
   build_kernel:
-    # name: 内核编译 (SukiSU) - ${{ github.event.inputs.kernel_to_build }}${{ needs.determine_sukisu_version.outputs.job_name_suffix }} # Original Name from user's latest file
-    name: 内核编译 - ${{ github.event.inputs.kernel_to_build }}${{ needs.determine_sukisu_version.outputs.job_name_suffix }} # Using this name for consistency with my previous versions, easier to track
+    name: 内核编译 (SukiSU) - ${{ github.event.inputs.kernel_to_build }}${{ needs.determine_sukisu_version.outputs.job_name_suffix }} # Name from user's latest "original file"
     needs: determine_sukisu_version
     runs-on: ubuntu-latest
-    outputs: # <--- 新增/修改：为Release Body准备的 outputs
+    outputs: # Outputs for Release Body
       artifact_name: ${{ steps.prepare_release_outputs.outputs.artifact_name_for_release }}
       release_tag: ${{ steps.prepare_release_outputs.outputs.release_tag_name }}
       release_title: ${{ steps.prepare_release_outputs.outputs.release_title_name }}
@@ -148,8 +150,8 @@ jobs:
           echo "SELECTED_OS_PATCH_LEVEL=$opl" >> $GITHUB_ENV
           rev="${rev_raw:-}"
           echo "SELECTED_REVISION=$rev" >> $GITHUB_ENV
-          echo "parsed_kernel_version=$kv" >> $GITHUB_OUTPUT # <--- 新增：输出 kv
-          echo "parsed_sub_level=$sl" >> $GITHUB_OUTPUT   # <--- 新增：输出 sl
+          echo "parsed_kernel_version=$kv" >> $GITHUB_OUTPUT
+          echo "parsed_sub_level=$sl" >> $GITHUB_OUTPUT
 
       - name: 生成版本后缀
         id: generate_suffixes
@@ -187,7 +189,7 @@ jobs:
             artifact_name_suffix_part="-${current_date}"
           fi
           echo "FINAL_KERNEL_LOCAL_VERSION=${final_kernel_local_version}" >> "$GITHUB_ENV"
-          echo "ARTIFACT_NAME_SUFFIX_PART=${artifact_name_suffix_part}" >> "$GITHUB_ENV" # This is used by original prepare_release_outputs
+          echo "ARTIFACT_NAME_SUFFIX_PART=${artifact_name_suffix_part}" >> "$GITHUB_ENV" # Retained for prepare_release_outputs
           echo "final_kernel_local_version_for_release_body=${final_kernel_local_version}" >> $GITHUB_OUTPUT # For Release Body
           echo "current_build_date_for_release_body=${current_date}" >> $GITHUB_OUTPUT # For Release Body
 
@@ -213,7 +215,7 @@ jobs:
           JOB_CONFIG="${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}-${{ env.SELECTED_SUB_LEVEL }}"
           echo "CONFIG=$JOB_CONFIG" >> $GITHUB_ENV
       - name: 安装ccache及依赖
-        run: sudo apt update && sudo apt upgrade -y && sudo apt install -y ccache python3 git curl zip # Added zip for release packaging
+        run: sudo apt update && sudo apt upgrade -y && sudo apt install -y ccache python3 git curl # zip is installed in create_release
       - name: 配置ccache
         run: |
           mkdir -p ~/.cache/bazel
@@ -260,27 +262,23 @@ jobs:
           curl https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
           chmod a+rx ./git-repo/repo
           echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
-      - name: 克隆依赖仓库 (AnyKernel3等) # Matching user's latest "original file"
+      - name: 克隆依赖仓库 (AnyKernel3等) # As per user's latest "original file" - without explicit target dirs in clone
         run: |
           ANYKERNEL_BRANCH="gki-2.0"
           SUSFS_BRANCH="gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}"
-          git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "$ANYKERNEL_BRANCH" AnyKernel3 # Ensuring target dir for clarity later
+          git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "$ANYKERNEL_BRANCH" AnyKernel3 # Added target dir back for clarity
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" susfs4ksu || \
-            (git clone https://gitlab.com/simonpunk/susfs4ksu.git -b main susfs4ksu)  # Ensuring target dir
-          git clone https://github.com/WildPlusKernel/kernel_patches.git kernel_patches # Ensuring target dir
-          git clone https://github.com/ShirkNeko/SukiSU_patch.git SukiSU_patch # Ensuring target dir
+            (git clone https://gitlab.com/simonpunk/susfs4ksu.git -b main susfs4ksu) # Added target dir back for clarity
+          git clone https://github.com/WildPlusKernel/kernel_patches.git kernel_patches # Added target dir back for clarity
+          git clone https://github.com/ShirkNeko/SukiSU_patch.git SukiSU_patch # Added target dir back for clarity
 
-      - name: 同步内核源码 # STRICTLY from user's latest "original file"
+      - name: 同步内核源码 # As per user's latest "original file"
         run: |
           mkdir -p "${{ env.CONFIG }}"
           cd "${{ env.CONFIG }}"
-          # The following line DOES NOT include _${{ env.SELECTED_REVISION }} as per user's latest "original file"
           FORMATTED_BRANCH="${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}-${{ env.SELECTED_OS_PATCH_LEVEL }}"
           $REPO init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-${FORMATTED_BRANCH} --repo-rev=v2.16
-          # The following line uses ${FORMATTED_BRANCH} without quotes around common-${FORMATTED_BRANCH} as per user's latest "original file"
-          # However, the error log showed "common-android12-5.10-2023-04_r9" was attempted, implying the revision *was* added in the run that failed.
-          # Forcing it to the user's "original" for now. If this still fails, the user needs to verify the exact manifest branch name required by Google for their chosen kernel_to_build option.
-          REMOTE_BRANCH=$(git ls-remote https://android.googlesource.com/kernel/common ${FORMATTED_BRANCH}) # Variable usage as per user's latest "original"
+          REMOTE_BRANCH=$(git ls-remote https://android.googlesource.com/kernel/common ${FORMATTED_BRANCH})
           DEFAULT_MANIFEST_PATH=.repo/manifests/default.xml
           if grep -q deprecated <<< "$REMOTE_BRANCH"; then
             sed -i "s/\"${FORMATTED_BRANCH}\"/\"deprecated\/${FORMATTED_BRANCH}\"/g" $DEFAULT_MANIFEST_PATH
@@ -325,7 +323,6 @@ jobs:
           if [ -f "./50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch" ]; then
             patch -p1 --fuzz=3 < 50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch || true
           fi
-          # FORMATTED_BRANCH_FOR_FIX uses SELECTED_OS_PATCH_LEVEL, SELECTED_REVISION is not used here in user's original
           FORMATTED_BRANCH_FOR_FIX="${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}-${{ env.SELECTED_OS_PATCH_LEVEL }}"
           if [ "$FORMATTED_BRANCH_FOR_FIX" == "android15-6.6-2024-08" ] || [ "$FORMATTED_BRANCH_FOR_FIX" == "android15-6.6-2024-09" ]; then
             curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/fix/fix6.6.patch -o test.patch
@@ -514,11 +511,11 @@ jobs:
             fi
             ccache --show-stats
 
-      - name: 修补内核映像 (KPM A12/A13) # From user's latest original
+      - name: 修补内核映像 (KPM A12/A13)
         if: env.EFFECTIVE_USE_KPM == 'true' && (env.SELECTED_ANDROID_VERSION == 'android12' || env.SELECTED_ANDROID_VERSION == 'android13') && env.SELECTED_KERNEL_VERSION != '6.6'
         run: |
           IMAGE_DIR_PATH="${{ env.CONFIG }}/out/${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}/dist"
-          if [ -d "$IMAGE_DIR_PATH" ] && [ -f "$IMAGE_DIR_PATH/Image" ]; then # Simplified existence check from user's original
+          if [ -d "$IMAGE_DIR_PATH" ] && [ -f "$IMAGE_DIR_PATH/Image" ]; then
             cd "$IMAGE_DIR_PATH"
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch_kpm
             chmod +x patch_kpm
@@ -527,13 +524,12 @@ jobs:
               mv Image Image.orig_kpm
               mv oImage Image
             fi
-            # cd "$GITHUB_WORKSPACE" # Removed as per user's original structure for this step
           fi
-      - name: 修补内核映像 (KPM A14/A15) # From user's latest original
+      - name: 修补内核映像 (KPM A14/A15)
         if: env.EFFECTIVE_USE_KPM == 'true' && (env.SELECTED_ANDROID_VERSION == 'android14' || env.SELECTED_ANDROID_VERSION == 'android15') && env.SELECTED_KERNEL_VERSION != '6.6'
         run: |
-          IMAGE_DIR_PATH="${{ env.CONFIG }}/bazel-bin/common/kernel_aarch64/" # Path from user's original
-          if [ -d "$IMAGE_DIR_PATH" ] && [ -f "$IMAGE_DIR_PATH/Image" ]; then # Simplified existence check
+          IMAGE_DIR_PATH="${{ env.CONFIG }}/bazel-bin/common/kernel_aarch64/" 
+          if [ -d "$IMAGE_DIR_PATH" ] && [ -f "$IMAGE_DIR_PATH/Image" ]; then
             cd "$IMAGE_DIR_PATH"
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch_kpm
             chmod +x patch_kpm
@@ -542,26 +538,25 @@ jobs:
               mv Image Image.orig_kpm
               mv oImage Image
             fi
-            # cd "$GITHUB_WORKSPACE" # Removed as per user's original structure for this step
           fi
-      - name: 复制内核映像至AnyKernel3 # From user's latest original
+      - name: 复制内核映像至AnyKernel3
         run: |
           IMAGE_SOURCE_PATH=""
           if [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android12" ] || [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android13" ]; then
             IMAGE_SOURCE_PATH="./${{ env.CONFIG }}/out/${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}/dist/Image"
           elif [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android14" ] || [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android15" ]; then
-            IMAGE_SOURCE_PATH="./${{ env.CONFIG }}/bazel-bin/common/kernel_aarch64/Image" # Path from user's original
+            IMAGE_SOURCE_PATH="./${{ env.CONFIG }}/bazel-bin/common/kernel_aarch64/Image"
           else
-            exit 1 # Simplified error handling from user's original
+            exit 1
           fi
           if [ -f "$IMAGE_SOURCE_PATH" ]; then
             if [ -d "./AnyKernel3" ]; then
               cp "$IMAGE_SOURCE_PATH" ./AnyKernel3/Image
             else
-              exit 1 # Simplified error handling
+              exit 1
             fi
           else
-            exit 1 # Simplified error handling
+            exit 1
           fi
       - name: 上传AnyKernel3刷机包
         uses: actions/upload-artifact@v4
@@ -572,8 +567,8 @@ jobs:
                 format('AnyKernel3_SukiSU_{0}_{1}-{2}_{3}', 'NoVer', env.SELECTED_KERNEL_VERSION, env.SELECTED_SUB_LEVEL, env.ARTIFACT_NAME_SUFFIX_PART) }}
           path: ./AnyKernel3
           if-no-files-found: error
-      - name: 准备 Release 输出信息 # This step remains as in your original, generating outputs for tag, title, artifact name
-        id: prepare_release_outputs # This ID must match what create_release needs
+      - name: 准备 Release 输出信息
+        id: prepare_release_outputs
         shell: bash
         run: |
           _suki_ver_num="${{ env.SUKI_VERSION_NUM }}" 
@@ -612,9 +607,14 @@ jobs:
   create_release:
     name: 创建 GitHub Release
     needs: build_kernel
+    permissions: # AI 建议：显式声明权限
+      contents: write
     runs-on: ubuntu-latest
-    if: success() && github.event.inputs.upload_to_release == true # <--- 修改：添加上传开关条件
+    if: success() && github.event.inputs.upload_to_release == 'true' # 字符串比较
     steps:
+      - name: 安装 zip 工具 # AI 建议：在此处安装 zip
+        run: sudo apt-get update && sudo apt-get install -y zip
+      
       - name: 下载内核刷机包
         uses: actions/download-artifact@v4
         with:
@@ -627,7 +627,7 @@ jobs:
         run: |
           cd downloaded_artifact
           zip_file_name="${{ needs.build_kernel.outputs.artifact_name }}.zip"
-          zip -r9 "../${zip_file_name}" . # Assumes zip is installed
+          zip -r9 "../${zip_file_name}" .
           cd ..
           echo "packaged_zip=${zip_file_name}" >> $GITHUB_OUTPUT
           if [ ! -f "${zip_file_name}" ]; then
@@ -657,6 +657,6 @@ jobs:
             - 使用KPM: `${{ github.event.inputs.use_kpm }}`
             
             ---
-            # 刷机包: `${{ steps.package_kernel.outputs.packaged_zip }}` # <--- 修改：注释掉或删除此行
+            # 刷机包: `${{ steps.package_kernel.outputs.packaged_zip }}` # 已移除
           token: ${{ secrets.GITHUB_TOKEN }}
           allowUpdates: true
