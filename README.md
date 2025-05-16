@@ -22,7 +22,6 @@
 ## ⚙️ 特性一览
 
 - 支持 **SukiSU Ultra** 权限控制模块
-- 基于 **Android 14 / Kernel 6.6 / Xiaomi 14 (pineapple)** 调整优化
 - 支持 GitHub Actions 云端自动构建
 - 精简 defconfig，删除多余模块
 - 可通过 AnyKernel3 封装快速刷入
