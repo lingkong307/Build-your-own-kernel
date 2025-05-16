@@ -76,7 +76,7 @@ on:
         type: boolean
         default: true
       upload_to_release:
-        description: '是否上传到 GitHub Release'
+        description: '是否上传到 GitHub Release (选择 "true" 或 "false")'
         required: true
         type: choice
         options:
@@ -123,7 +123,7 @@ jobs:
           echo "suki_version_actual=${suki_version_actual_for_output}" >> $GITHUB_OUTPUT
 
   build_kernel:
-    name: 内核编译 - ${{ github.event.inputs.kernel_to_build }}${{ needs.determine_sukisu_version.outputs.job_name_suffix }}
+    name: 内核编译 (SukiSU) - ${{ github.event.inputs.kernel_to_build }}${{ needs.determine_sukisu_version.outputs.job_name_suffix }}
     needs: determine_sukisu_version
     runs-on: ubuntu-latest
     outputs:
@@ -134,6 +134,7 @@ jobs:
       current_build_date_formatted_output: ${{ steps.generate_suffixes.outputs.current_build_date_formatted_for_release_body }}
       parsed_kernel_version_output: ${{ steps.parse_kernel.outputs.parsed_kernel_version }}
       parsed_sub_level_output: ${{ steps.parse_kernel.outputs.parsed_sub_level }}
+      sukisu_version_from_build_job: ${{ needs.determine_sukisu_version.outputs.sukisu_version }}
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
@@ -307,12 +308,10 @@ jobs:
         shell: bash
         run: |
           final_suki_version_num_for_env="${{ needs.determine_sukisu_version.outputs.sukisu_version }}"
-          # SUKI_VERSION_NUM is used by '上传AnyKernel3刷机包' for artifact naming
-          # It expects a numeric-like string or 'NoVer'
           if [[ "$final_suki_version_num_for_env" =~ ^[0-9]+$ ]]; then
             echo "SUKI_VERSION_NUM=$final_suki_version_num_for_env" >> $GITHUB_ENV
           else
-            echo "SUKI_VERSION_NUM=NoVer" >> $GITHUB_ENV # Fallback for artifact naming
+            echo "SUKI_VERSION_NUM=NoVer" >> $GITHUB_ENV
           fi
       - name: 应用SUSFS补丁
         working-directory: ./${{ env.CONFIG }}
@@ -620,7 +619,7 @@ jobs:
     steps:
       - name: 安装 zip 工具
         run: sudo apt-get update && sudo apt-get install -y zip
-
+      
       - name: 下载内核刷机包
         uses: actions/download-artifact@v4
         with:
@@ -652,7 +651,7 @@ jobs:
 
             **核心信息:**
             - 内核版本构建输入: `${{ github.event.inputs.kernel_to_build }}`
-            - SukiSU 版本 (计算): `${{ needs.determine_sukisu_version.outputs.sukisu_version }}`
+            - SukiSU 版本 (计算): `${{ needs.build_kernel.outputs.sukisu_version_from_build_job }}`
             - SukiSU 功能分支: `${{ github.event.inputs.kernelsu_branch }}`
             - 自定义版本后缀 (如有): `${{ github.event.inputs.custom_version_suffix == '' && '随机生成' || format('自定义: {0}', github.event.inputs.custom_version_suffix) }}`
             - 内核名称: `${{ needs.build_kernel.outputs.parsed_kernel_version_output }}.${{ needs.build_kernel.outputs.parsed_sub_level_output }}${{ needs.build_kernel.outputs.final_kernel_local_version_output }}`
