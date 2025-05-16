@@ -38,9 +38,10 @@ git clone https://github.com/Celestials316/Build-your-own-kernel.git
 ```
 ### 2. 使用 GitHub Actions 编译并刷入
 
-## 致谢 Thanks
+## 🙏 鸣谢 Thanks
 
 - [KernelSU](https://github.com/tiann/KernelSU)
 - [SukiSU](https://github.com/SukiSU)
 - 各位热心提供内核适配经验的大佬们！
+- GitHub Actions 社区编译脚本模板贡献者
 
