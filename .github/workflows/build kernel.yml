@@ -142,9 +142,6 @@ jobs:
           echo "SELECTED_REVISION=$rev" >> $GITHUB_ENV
       - name: 生成版本后缀
         id: generate_suffixes
-        outputs:
-          final_kernel_local_version_for_release_body: ${{ env.FINAL_KERNEL_LOCAL_VERSION_TEMP }}
-          artifact_name_suffix_part_for_release_body: ${{ env.ARTIFACT_NAME_SUFFIX_PART_TEMP }}
         env:
           USER_PROVIDED_SUFFIX: ${{ github.event.inputs.custom_version_suffix }}
           SELECTED_AV_ENV: ${{ env.SELECTED_ANDROID_VERSION }}
@@ -180,8 +177,6 @@ jobs:
           fi
           echo "FINAL_KERNEL_LOCAL_VERSION=${_final_kernel_local_version}" >> "$GITHUB_ENV"
           echo "ARTIFACT_NAME_SUFFIX_PART=${_artifact_name_suffix_part}" >> "$GITHUB_ENV"
-          echo "FINAL_KERNEL_LOCAL_VERSION_TEMP=${_final_kernel_local_version}" >> "$GITHUB_ENV" 
-          echo "ARTIFACT_NAME_SUFFIX_PART_TEMP=${_artifact_name_suffix_part}" >> "$GITHUB_ENV"
           echo "final_kernel_local_version_for_release_body=${_final_kernel_local_version}" >> $GITHUB_OUTPUT
           echo "artifact_name_suffix_part_for_release_body=${_artifact_name_suffix_part}" >> $GITHUB_OUTPUT
 
@@ -508,7 +503,7 @@ jobs:
         run: |
           IMAGE_DIR_PATH="${{ env.CONFIG }}/out/${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}/dist"
           if [ ! -d "$IMAGE_DIR_PATH" ] || [ ! -f "$IMAGE_DIR_PATH/Image" ]; then
-            IMAGE_DIR_PATH="${{ env.CONFIG }}/bazel-bin/common/kernel_aarch64" # Fallback for Bazel A12/A13
+            IMAGE_DIR_PATH="${{ env.CONFIG }}/bazel-bin/common/kernel_aarch64" 
             if [ ! -d "$IMAGE_DIR_PATH" ]; then IMAGE_DIR_PATH="${{ env.CONFIG }}/bazel-bin/common"; fi
           fi
           if [ -d "$IMAGE_DIR_PATH" ] && [ -f "$IMAGE_DIR_PATH/Image" ]; then
@@ -637,30 +632,24 @@ jobs:
       - name: 列出下载文件并校验
         id: verify_artifact
         run: |
-          echo "期望的 artifact (zip包基础名): ${{ needs.build_kernel.outputs.artifact_name }}"
           expected_zip_file="${{ needs.build_kernel.outputs.artifact_name }}.zip"
-          echo "期望的 zip 文件全名: $expected_zip_file"
           ls -lha 
           if [ -f "$expected_zip_file" ]; then
-            echo "文件 $expected_zip_file 存在。"
             echo "found_zip_file=$expected_zip_file" >> $GITHUB_OUTPUT
           else
-            echo "错误: 文件 $expected_zip_file 未找到！"
-            # 尝试查找是否有其他zip，或者artifact下载后名称不完全一致
             alt_zip_file=$(find . -maxdepth 1 -name "*.zip" -print -quit)
             if [ -n "$alt_zip_file" ]; then
-                echo "找到了另一个zip文件: $alt_zip_file 。将尝试使用它。"
                 echo "found_zip_file=$alt_zip_file" >> $GITHUB_OUTPUT
             else
-                echo "错误: 工作目录下没有找到任何 .zip 文件。"
-                # exit 1 # 暂时不退出，让后续步骤失败并显示更多信息
+                echo "found_zip_file=" >> $GITHUB_OUTPUT
             fi
           fi
 
       - name: 创建 Release 并上传刷机包
+        if: steps.verify_artifact.outputs.found_zip_file != ''
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "${{ steps.verify_artifact.outputs.found_zip_file }}"
+          artifacts: ${{ steps.verify_artifact.outputs.found_zip_file }}
           tag: ${{ needs.build_kernel.outputs.release_tag }}
           name: ${{ needs.build_kernel.outputs.release_title }}
           body: |
@@ -682,3 +671,8 @@ jobs:
             刷机包: `${{ steps.verify_artifact.outputs.found_zip_file }}`
           token: ${{ secrets.GITHUB_TOKEN }}
           allowUpdates: true
+      - name: 报告刷机包上传失败
+        if: steps.verify_artifact.outputs.found_zip_file == ''
+        run: |
+          echo "::error title=刷机包上传失败::未能找到预期的 .zip 文件 (${{ needs.build_kernel.outputs.artifact_name }}.zip) 进行上传，Release 未包含刷机包。"
+          exit 1
