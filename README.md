@@ -19,7 +19,7 @@
 
 ---
 
-## ⚙️ 特性
+## ⚙️ 特性一览
 
 - 支持 **SukiSU Ultra** 权限控制模块
 - 基于 **Android 14 / Kernel 6.6 / Xiaomi 14 (pineapple)** 调整优化
@@ -36,7 +36,7 @@
 ```bash
 git clone https://github.com/Celestials316/Build-your-own-kernel.git
 ```
-### 2. 使用 GitHub Actions 自动构建并刷入
+### 2. 使用 GitHub Actions 编译并刷入生成的anykernel3刷机包
 
 ## 致谢 Thanks
 
