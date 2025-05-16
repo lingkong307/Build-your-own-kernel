@@ -36,7 +36,5 @@
 ```bash
 git clone https://github.com/Celestials316/Build-your-own-kernel.git
 ```
-### 2. 使用 GitHub Actions 自动构建（推送后自动触发）
-
-### 3. 刷入生成的anykernel3刷机包
+### 2. 使用 GitHub Actions 自动构建并刷入
 
