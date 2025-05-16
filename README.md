@@ -35,3 +35,12 @@
 
 ```bash
 git clone https://github.com/Celestials316/Build-your-own-kernel.git
+
+### 2. 构建内核（本地构建）
+
+```bash
+export ARCH=arm64
+export SUBARCH=arm64
+export CROSS_COMPILE=aarch64-linux-android-
+make vendor/pineapple_gki_defconfig
+make -j$(nproc)
