@@ -142,6 +142,10 @@ jobs:
           echo "SELECTED_REVISION=$rev" >> $GITHUB_ENV
       - name: 生成版本后缀
         id: generate_suffixes
+        env:
+          USER_PROVIDED_SUFFIX: ${{ github.event.inputs.custom_version_suffix }}
+          SELECTED_AV_ENV: ${{ env.SELECTED_ANDROID_VERSION }}
+          SELECTED_KV_ENV: ${{ env.SELECTED_KERNEL_VERSION }}
         run: |
           _final_kernel_local_version=""
           _artifact_name_suffix_part=""
@@ -624,23 +628,17 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.build_kernel.outputs.artifact_name }} 
-          path: downloaded_artifact # 下载到特定子目录
+          path: downloaded_artifact
 
       - name: 准备刷机包并设置路径
         id: package_kernel
         shell: bash
         run: |
           cd downloaded_artifact
-          # 此时 downloaded_artifact 目录内容就是 AnyKernel3 的内容
-          # 我们需要将这些内容重新打包成一个 zip 文件
-          # zip 文件名使用 artifact_name.zip，因为 upload-artifact 的原始行为就是这样
           zip_file_name="${{ needs.build_kernel.outputs.artifact_name }}.zip"
-          # 将 downloaded_artifact 目录下的所有内容（即原AnyKernel3目录的内容）打包
           zip -r9 "../${zip_file_name}" .
           cd ..
           echo "packaged_zip=${zip_file_name}" >> $GITHUB_OUTPUT
-          echo "列出最终的ZIP文件:"
-          ls -lha "${zip_file_name}"
           if [ ! -f "${zip_file_name}" ]; then
             echo "::error title=打包失败::未能创建 ${zip_file_name}"
             exit 1
