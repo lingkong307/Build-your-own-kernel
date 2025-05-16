@@ -138,6 +138,15 @@ jobs:
       SUKI_VERSION_NUM_FROM_PREVIOUS_JOB: ${{ needs.determine_sukisu_version.outputs.sukisu_version }}
 
     steps:
+      - name: Display Workflow Inputs # <--- 新增的调试步骤
+        run: |
+          echo "Input kernel_to_build: ${{ github.event.inputs.kernel_to_build }}"
+          echo "Input kernelsu_branch: ${{ github.event.inputs.kernelsu_branch }}"
+          echo "Input custom_version_suffix: ${{ github.event.inputs.custom_version_suffix }}"
+          echo "Input use_zram: ${{ github.event.inputs.use_zram }}"
+          echo "Input use_kpm: ${{ github.event.inputs.use_kpm }}"
+          echo "Input upload_to_release: ${{ github.event.inputs.upload_to_release }}"
+          echo "Type of upload_to_release: $(if [ "${{ github.event.inputs.upload_to_release }}" == "true" ]; then echo "string_true"; elif [ "${{ github.event.inputs.upload_to_release }}" == "false" ]; then echo "string_false"; else echo "other_or_empty: [${{ github.event.inputs.upload_to_release }}]"; fi)"
       - name: 解析内核参数
         id: parse_kernel
         run: |
