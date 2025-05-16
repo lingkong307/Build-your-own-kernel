@@ -647,9 +647,9 @@ jobs:
 
   create_release:
     name: 创建 GitHub Release
-    needs: build_kernel
+    needs: build_kernel # 依赖关系仍然保留
     runs-on: ubuntu-latest
-    if: success() && github.event.inputs.upload_to_release == true
+    if: github.event.inputs.upload_to_release == true
     steps:
       - name: 下载内核刷机包
         uses: actions/download-artifact@v4
