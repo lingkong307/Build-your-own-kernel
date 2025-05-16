@@ -36,7 +36,7 @@
 ```bash
 git clone https://github.com/Celestials316/Build-your-own-kernel.git
 ```
-### 2. 使用 GitHub Actions 编译并刷入生成的anykernel3刷机包
+### 2. 使用 GitHub Actions 编译并刷入
 
 ## 致谢 Thanks
 
