@@ -559,51 +559,57 @@ jobs:
             # exit 1 # 您的原始版本没有在这里 exit 1
           fi
 
+      # ... (build_kernel job 的其他步骤) ...
+
       - name: 上传AnyKernel3刷机包 # 此步骤名称和内容保持您原始版本不变
+        id: upload_step # 给它一个ID，虽然我们不会直接用它的输出，但它的 name 字段是我们的参照
         uses: actions/upload-artifact@v4
         with:
-          name: |
+          name: | # 这是您原始的 artifact 名称逻辑
             ${{ (env.SUKI_VERSION_NUM != '' && env.SUKI_VERSION_NUM != '00000') &&
                 format('AnyKernel3_SukiSUUltra_{0}_{1}-{2}_{3}', env.SUKI_VERSION_NUM, env.SELECTED_KERNEL_VERSION, env.SELECTED_SUB_LEVEL, env.ARTIFACT_NAME_SUFFIX_PART) ||
                 format('AnyKernel3_SukiSU_{0}_{1}-{2}_{3}', 'NoVer', env.SELECTED_KERNEL_VERSION, env.SELECTED_SUB_LEVEL, env.ARTIFACT_NAME_SUFFIX_PART) }}
           path: ./AnyKernel3 
           if-no-files-found: error 
 
-      # ------------ 新增步骤：为 Release 准备输出信息 ------------
       - name: 准备 Release 输出信息
         id: prepare_release_outputs
         shell: bash
         run: |
-          # 使用与您原 "上传AnyKernel3刷机包" 步骤完全相同的逻辑来计算 artifact_name
           _suki_ver_num="${{ env.SUKI_VERSION_NUM }}" 
           _kernel_ver="${{ env.SELECTED_KERNEL_VERSION }}"
           _sub_level="${{ env.SELECTED_SUB_LEVEL }}"
-          _suffix_part="${{ env.ARTIFACT_NAME_SUFFIX_PART }}"
+          _suffix_part="${{ env.ARTIFACT_NAME_SUFFIX_PART }}" # 例如 "-20250516" 或用户自定义后缀
 
           _artifact_name_for_release=""
+          # 精确复制原始 format() 的结构: {kernel_ver}-{sub_level}_{suffix_part}
           if [[ "$_suki_ver_num" != "" && "$_suki_ver_num" != "00000" ]]; then
-            _artifact_name_for_release=$(printf 'AnyKernel3_SukiSUUltra_%s_%s-%s%s' "$_suki_ver_num" "$_kernel_ver" "$_sub_level" "$_suffix_part")
+            _artifact_name_for_release="AnyKernel3_SukiSUUltra_${_suki_ver_num}_${_kernel_ver}-${_sub_level}_${_suffix_part}"
           else
-            _artifact_name_for_release=$(printf 'AnyKernel3_SukiSU_NoVer_%s-%s%s' "$_kernel_ver" "$_sub_level" "$_suffix_part")
+            _artifact_name_for_release="AnyKernel3_SukiSU_NoVer_${_kernel_ver}-${_sub_level}_${_suffix_part}"
           fi
           
-          # 生成 Release Tag (通常不建议包含太多特殊字符，点号有时也会引起问题，下划线更安全)
+          # 如果 _suffix_part 本身以 '-' 开头，那么 artifact name 会是 ..._sublevel_-date...
+          # 例如：AnyKernel3_SukiSUUltra_12880_6.1-75_-20250516
+          
+          # 清理 artifact name (通常 GitHub artifact name 限制较少，但可以保留以防万一)
+          _artifact_name_cleaned=$(echo "$_artifact_name_for_release" | sed 's/[^a-zA-Z0-9._-]/-/g')
+
           _tag_base=""
           if [[ "$_suki_ver_num" != "" && "$_suki_ver_num" != "00000" ]]; then
-             _tag_base=$(printf 'SukiSUUltra_%s_%s-%s%s' "$_suki_ver_num" "$_kernel_ver" "$_sub_level" "$_suffix_part")
+             _tag_base="SukiSUUltra_${_suki_ver_num}_${_kernel_ver}-${_sub_level}_${_suffix_part}"
           else
-             _tag_base=$(printf 'SukiSU_NoVer_%s-%s%s' "$_kernel_ver" "$_sub_level" "$_suffix_part")
+             _tag_base="SukiSU_NoVer_${_kernel_ver}-${_sub_level}_${_suffix_part}"
           fi
-          # 清理 release tag，替换潜在的非法字符
           _release_tag_cleaned=$(echo "$_tag_base" | tr '.' '_' | sed 's/[^a-zA-Z0-9._-]/-/g')
           
           _release_title="内核: ${_tag_base}" 
 
-          echo "artifact_name_for_release=${_artifact_name_for_release}" >> "$GITHUB_OUTPUT" # 这个是 upload-artifact 使用的 name
+          echo "artifact_name_for_release=${_artifact_name_cleaned}" >> "$GITHUB_OUTPUT"
           echo "release_tag_name=${_release_tag_cleaned}" >> "$GITHUB_OUTPUT"
           echo "release_title_name=${_release_title}" >> "$GITHUB_OUTPUT"
           
-          echo "构建产物名 (Artifact name for upload step): ${_artifact_name_for_release}"
+          echo "构建产物名 (Artifact name): ${_artifact_name_cleaned}"
           echo "发行版标签 (Release tag): ${_release_tag_cleaned}"
           echo "发行版标题 (Release title): ${_release_title}"
 
