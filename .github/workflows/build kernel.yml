@@ -142,31 +142,27 @@ jobs:
           echo "SELECTED_REVISION=$rev" >> $GITHUB_ENV
       - name: 生成版本后缀
         id: generate_suffixes
-        env:
-          USER_PROVIDED_SUFFIX: ${{ github.event.inputs.custom_version_suffix }}
-          SELECTED_AV_ENV: ${{ env.SELECTED_ANDROID_VERSION }}
-          SELECTED_KV_ENV: ${{ env.SELECTED_KERNEL_VERSION }}
         run: |
           _final_kernel_local_version=""
           _artifact_name_suffix_part=""
           current_date=$(date +%Y%m%d)
-          if [[ -n "$USER_PROVIDED_SUFFIX" ]]; then
-            _final_kernel_local_version="$USER_PROVIDED_SUFFIX"
-            _artifact_name_suffix_part="$USER_PROVIDED_SUFFIX"
+          if [[ -n "${{ github.event.inputs.custom_version_suffix }}" ]]; then
+            _final_kernel_local_version="${{ github.event.inputs.custom_version_suffix }}"
+            _artifact_name_suffix_part="${{ github.event.inputs.custom_version_suffix }}"
           else
             kernel_fixed_part_for_localversion=""
-            if [ "$SELECTED_AV_ENV" == "android12" ] && [ "$SELECTED_KV_ENV" == "5.10" ]; then
+            if [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android12" ] && [ "${{ env.SELECTED_KERNEL_VERSION }}" == "5.10" ]; then
               kernel_fixed_part_for_localversion="-android12-9"
-            elif [ "$SELECTED_AV_ENV" == "android13" ] && [ "$SELECTED_KV_ENV" == "5.10" ]; then
+            elif [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android13" ] && [ "${{ env.SELECTED_KERNEL_VERSION }}" == "5.10" ]; then
               kernel_fixed_part_for_localversion="-android13-9"
-            elif [ "$SELECTED_AV_ENV" == "android13" ] && [ "$SELECTED_KV_ENV" == "5.15" ]; then
+            elif [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android13" ] && [ "${{ env.SELECTED_KERNEL_VERSION }}" == "5.15" ]; then
               kernel_fixed_part_for_localversion="-android13-8"
-            elif [ "$SELECTED_AV_ENV" == "android14" ] && [ "$SELECTED_KV_ENV" == "6.1" ]; then
+            elif [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android14" ] && [ "${{ env.SELECTED_KERNEL_VERSION }}" == "6.1" ]; then
               kernel_fixed_part_for_localversion="-android14-11"
-            elif [ "$SELECTED_AV_ENV" == "android15" ] && [ "$SELECTED_KV_ENV" == "6.6" ]; then
+            elif [ "${{ env.SELECTED_ANDROID_VERSION }}" == "android15" ] && [ "${{ env.SELECTED_KERNEL_VERSION }}" == "6.6" ]; then
               kernel_fixed_part_for_localversion="-android15-8"
             else 
-              kernel_fixed_part_for_localversion="-${SELECTED_AV_ENV}-${SELECTED_KV_ENV//./_}-custom"
+              kernel_fixed_part_for_localversion="-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }//./_}-custom"
             fi
             prefix1="gd"
             prefix2="ab"
@@ -628,28 +624,32 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.build_kernel.outputs.artifact_name }} 
+          path: downloaded_artifact # 下载到特定子目录
 
-      - name: 列出下载文件并校验
-        id: verify_artifact
+      - name: 准备刷机包并设置路径
+        id: package_kernel
+        shell: bash
         run: |
-          expected_zip_file="${{ needs.build_kernel.outputs.artifact_name }}.zip"
-          ls -lha 
-          if [ -f "$expected_zip_file" ]; then
-            echo "found_zip_file=$expected_zip_file" >> $GITHUB_OUTPUT
-          else
-            alt_zip_file=$(find . -maxdepth 1 -name "*.zip" -print -quit)
-            if [ -n "$alt_zip_file" ]; then
-                echo "found_zip_file=$alt_zip_file" >> $GITHUB_OUTPUT
-            else
-                echo "found_zip_file=" >> $GITHUB_OUTPUT
-            fi
+          cd downloaded_artifact
+          # 此时 downloaded_artifact 目录内容就是 AnyKernel3 的内容
+          # 我们需要将这些内容重新打包成一个 zip 文件
+          # zip 文件名使用 artifact_name.zip，因为 upload-artifact 的原始行为就是这样
+          zip_file_name="${{ needs.build_kernel.outputs.artifact_name }}.zip"
+          # 将 downloaded_artifact 目录下的所有内容（即原AnyKernel3目录的内容）打包
+          zip -r9 "../${zip_file_name}" .
+          cd ..
+          echo "packaged_zip=${zip_file_name}" >> $GITHUB_OUTPUT
+          echo "列出最终的ZIP文件:"
+          ls -lha "${zip_file_name}"
+          if [ ! -f "${zip_file_name}" ]; then
+            echo "::error title=打包失败::未能创建 ${zip_file_name}"
+            exit 1
           fi
 
       - name: 创建 Release 并上传刷机包
-        if: steps.verify_artifact.outputs.found_zip_file != ''
         uses: ncipollo/release-action@v1
         with:
-          artifacts: ${{ steps.verify_artifact.outputs.found_zip_file }}
+          artifacts: ${{ steps.package_kernel.outputs.packaged_zip }}
           tag: ${{ needs.build_kernel.outputs.release_tag }}
           name: ${{ needs.build_kernel.outputs.release_title }}
           body: |
@@ -668,11 +668,6 @@ jobs:
             - 使用KPM: `${{ github.event.inputs.use_kpm }}`
             
             ---
-            刷机包: `${{ steps.verify_artifact.outputs.found_zip_file }}`
+            刷机包: `${{ steps.package_kernel.outputs.packaged_zip }}`
           token: ${{ secrets.GITHUB_TOKEN }}
           allowUpdates: true
-      - name: 报告刷机包上传失败
-        if: steps.verify_artifact.outputs.found_zip_file == ''
-        run: |
-          echo "::error title=刷机包上传失败::未能找到预期的 .zip 文件 (${{ needs.build_kernel.outputs.artifact_name }}.zip) 进行上传，Release 未包含刷机包。"
-          exit 1
