@@ -588,7 +588,7 @@ jobs:
           fi
           _artifact_name_cleaned_for_output=$(echo "$_artifact_name_for_upload_internal" | sed 's/[^a-zA-Z0-9._-]/-/g')
           echo "artifact_name_for_release=${_artifact_name_cleaned_for_output}" >> "$GITHUB_OUTPUT"
-          _new_release_base_name="sukisuultra"
+          _new_release_base_name="SukiSUUltra"
           _final_release_title=""
           _final_release_tag=""
           if [[ "$_suki_ver_num_for_name_prep" != "NoVer" && "$_suki_ver_num_for_name_prep" =~ ^[0-9]+$ && "$_suki_ver_num_for_name_prep" != "00000" && "$_suki_ver_num_for_name_prep" != "10000" ]]; then
