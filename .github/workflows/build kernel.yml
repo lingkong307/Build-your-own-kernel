@@ -76,7 +76,7 @@ on:
         type: boolean
         default: true
       upload_to_release:
-        description: '是否上传到 GitHub Release (选择 "true" 或 "false")'
+        description: '是否上传到 GitHub Release'
         required: true
         type: choice
         options:
