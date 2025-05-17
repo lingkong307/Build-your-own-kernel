@@ -573,46 +573,42 @@ jobs:
           path: ./AnyKernel3
           if-no-files-found: error
       - name: 准备 Release 输出信息
-      id: prepare_release_outputs
-      shell: bash
-      run: |
-        _suki_ver_num_for_name_prep="${{ env.SUKI_VERSION_NUM }}"
-        _kernel_ver="${{ env.SELECTED_KERNEL_VERSION }}"
-        _sub_level="${{ env.SELECTED_SUB_LEVEL }}"
-        _suffix_part="${{ env.ARTIFACT_NAME_SUFFIX_PART }}"
+        id: prepare_release_outputs
+        shell: bash
+        run: |
+          _suki_ver_num_for_name_prep="${{ env.SUKI_VERSION_NUM }}" 
+          _kernel_ver="${{ env.SELECTED_KERNEL_VERSION }}"
+          _sub_level="${{ env.SELECTED_SUB_LEVEL }}"
+          _suffix_part="${{ env.ARTIFACT_NAME_SUFFIX_PART }}"
 
-        _artifact_name_for_upload_internal=""
-        if [[ "$_suki_ver_num_for_name_prep" != "NoVer" && "$_suki_ver_num_for_name_prep" =~ ^[0-9]+$ && "$_suki_ver_num_for_name_prep" != "00000" && "$_suki_ver_num_for_name_prep" != "10000" ]]; then
-          _artifact_name_for_upload_internal="AnyKernel3_SukiSUUltra_${_suki_ver_num_for_name_prep}_${_kernel_ver}-${_sub_level}_${_suffix_part}"
-        else
-          _artifact_name_for_upload_internal="AnyKernel3_SukiSU_NoVer_${_kernel_ver}-${_sub_level}_${_suffix_part}"
-        fi
-        _artifact_name_cleaned_for_output=$(echo "$_artifact_name_for_upload_internal" | sed 's/[^a-zA-Z0-9._-]/-/g')
-        echo "artifact_name_for_release=${_artifact_name_cleaned_for_output}" >> "$GITHUB_OUTPUT"
-
-        _new_release_base_name="sukisuultra"
-        _final_release_title=""
-        _final_release_tag=""
-
-        if [[ "$_suki_ver_num_for_name_prep" != "NoVer" && "$_suki_ver_num_for_name_prep" =~ ^[0-9]+$ && "$_suki_ver_num_for_name_prep" != "00000" && "$_suki_ver_num_for_name_prep" != "10000" ]]; then
-          _final_release_title="${_new_release_base_name}-${_suki_ver_num_for_name_prep}"
-          _final_release_tag="${_new_release_base_name}-${_suki_ver_num_for_name_prep}"
-        else
-          _actual_suffix_for_fallback="${_suffix_part}"
-          if [[ ! "$_actual_suffix_for_fallback" == -* && -n "$_actual_suffix_for_fallback" ]]; then
-            _actual_suffix_for_fallback="-${_actual_suffix_for_fallback}"
-          elif [[ -z "$_actual_suffix_for_fallback" ]]; then
-            _actual_suffix_for_fallback="-$(date +%Y%m%d)"
+          _artifact_name_for_release=""
+          if [[ "$_suki_ver_num_for_name_prep" != "NoVer" && "$_suki_ver_num_for_name_prep" != "" && "$_suki_ver_num_for_name_prep" != "00000" && "$_suki_ver_num_for_name_prep" != "10000" ]]; then
+            _artifact_name_for_release="AnyKernel3_SukiSUUltra_${_suki_ver_num_for_name_prep}_${_kernel_ver}-${_sub_level}_${_suffix_part}"
+          else
+            _artifact_name_for_release="AnyKernel3_SukiSU_NoVer_${_kernel_ver}-${_sub_level}_${_suffix_part}"
           fi
-          _final_release_title="${_new_release_base_name}-NoVer${_actual_suffix_for_fallback}"
-          _final_release_tag="${_new_release_base_name}-NoVer${_actual_suffix_for_fallback}"
-        fi
+         
+          _artifact_name_cleaned=$(echo "$_artifact_name_for_release" | sed 's/[^a-zA-Z0-9._-]/-/g')
 
-        _final_release_tag_cleaned=$(echo "$_final_release_tag" | sed 's/[^a-zA-Z0-9._-]/-/g')
-        _final_release_title_cleaned="${_final_release_title}" 
+          _base_for_title_and_tag=""
+          _tag_suffix_part=""
+          if [[ "$_suki_ver_num_for_name_prep" != "NoVer" && "$_suki_ver_num_for_name_prep" != "" && "$_suki_ver_num_for_name_prep" != "00000" && "$_suki_ver_num_for_name_prep" != "10000" ]]; then
+              _base_for_title_and_tag="SukiSUUltra_${_suki_ver_num_for_name_prep}_${_kernel_ver}-${_sub_level}"
+              _tag_suffix_part="${_suffix_part}" 
+          else
+              _base_for_title_and_tag="SukiSU_NoVer_${_kernel_ver}-${_sub_level}"
+              _tag_suffix_part="${_suffix_part}" 
+          fi
+         
+          _release_tag_name_combined="${_base_for_title_and_tag}${_tag_suffix_part}"
+          _release_tag_cleaned=$(echo "$_release_tag_name_combined" | tr '.' '_' | sed 's/[^a-zA-Z0-9._-]/-/g')
+         
+          _release_title_cleaned="${_base_for_title_and_tag}"
 
-        echo "release_tag_name=${_final_release_tag_cleaned}" >> "$GITHUB_OUTPUT"
-        echo "release_title_name=${_final_release_title_cleaned}" >> "$GITHUB_OUTPUT"
+          echo "artifact_name_for_release=${_artifact_name_cleaned}" >> "$GITHUB_OUTPUT"
+          echo "release_tag_name=${_release_tag_cleaned}" >> "$GITHUB_OUTPUT"
+          echo "release_title_name=${_release_title_cleaned}" >> "$GITHUB_OUTPUT"
+
   create_release:
     name: 创建 GitHub Release
     needs: build_kernel
