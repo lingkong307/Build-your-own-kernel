@@ -62,7 +62,7 @@ on:
           - Other
         default: Dev
       custom_version_suffix:
-        description: '自定义内核版本后缀 (留空则随机)'
+        description: '自定义内核版本后缀 (留空仿官方)'
         required: false
         type: string
       use_zram:
