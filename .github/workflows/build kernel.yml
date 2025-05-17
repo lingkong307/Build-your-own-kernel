@@ -182,7 +182,7 @@ jobs:
               kernel_fixed_part_for_localversion="-android14-11"
             elif [ "$SELECTED_AV_ENV" == "android15" ] && [ "$SELECTED_KV_ENV" == "6.6" ]; then
               kernel_fixed_part_for_localversion="-android15-8"
-            else 
+            else
               kernel_fixed_part_for_localversion="-${SELECTED_AV_ENV}-${SELECTED_KV_ENV//./_}-custom"
             fi
             prefix1="gd"
@@ -246,7 +246,7 @@ jobs:
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
           AOSP_MIRROR=https://android.googlesource.com
-          BRANCH=main-kernel-build-2024 
+          BRANCH=main-kernel-build-2024
           git clone $AOSP_MIRROR/kernel/prebuilts/build-tools -b $BRANCH --depth 1 kernel-build-tools
           git clone $AOSP_MIRROR/platform/system/tools/mkbootimg -b $BRANCH --depth 1 mkbootimg
       - name: 设置工具链环境变量
@@ -293,11 +293,11 @@ jobs:
         run: |
           KSU_SETUP_BRANCH_ARG=""
           if [[ "${{ github.event.inputs.kernelsu_branch }}" == "Stable" ]]; then
-            KSU_SETUP_BRANCH_ARG="" 
+            KSU_SETUP_BRANCH_ARG=""
           elif [[ "${{ github.event.inputs.kernelsu_branch }}" == "Dev" ]]; then
-            KSU_SETUP_BRANCH_ARG="-s susfs-dev" 
+            KSU_SETUP_BRANCH_ARG="-s susfs-dev"
           elif [[ "${{ github.event.inputs.kernelsu_branch }}" == "Other" ]]; then
-            KSU_SETUP_BRANCH_ARG="" 
+            KSU_SETUP_BRANCH_ARG=""
           fi
           echo "KSU_BRANCH_ARG=${KSU_SETUP_BRANCH_ARG}" >> $GITHUB_ENV
       - name: 集成SukiSU
@@ -322,9 +322,9 @@ jobs:
           KSU_SUBDIR="KernelSU"
           if [ -d "./$KSU_SUBDIR" ]; then
             cd "./$KSU_SUBDIR"
-            cd .. 
+            cd ..
           fi
-          cd ./common 
+          cd ./common
           if [ -f "./50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch" ]; then
             patch -p1 --fuzz=3 < 50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch || true
           fi
@@ -348,12 +348,12 @@ jobs:
           cp -r ../../SukiSU_patch/other/zram/lz4k_oplus ./lib/ || echo "lz4k_oplus copy failed"
           LZ4KD_PATCH_PATH="../../SukiSU_patch/other/zram/zram_patch/${{ env.SELECTED_KERNEL_VERSION }}/lz4kd.patch"
           if [ -f "$LZ4KD_PATCH_PATH" ]; then
-            cp "$LZ4KD_PATCH_PATH" ./lz4kd.patch 
+            cp "$LZ4KD_PATCH_PATH" ./lz4kd.patch
             patch -p1 -F 3 < lz4kd.patch || true
           fi
           LZ4K_OPLUS_PATCH_PATH="../../SukiSU_patch/other/zram/zram_patch/${{ env.SELECTED_KERNEL_VERSION }}/lz4k_oplus.patch"
           if [ -f "$LZ4K_OPLUS_PATCH_PATH" ]; then
-            cp "$LZ4K_OPLUS_PATCH_PATH" ./lz4k_oplus.patch 
+            cp "$LZ4K_OPLUS_PATCH_PATH" ./lz4k_oplus.patch
             patch -p1 -F 3 < lz4k_oplus.patch || true
           fi
       - name: 应用隐藏特征补丁
@@ -441,9 +441,9 @@ jobs:
           cd "${{ env.CONFIG }}"
           if [ ! -f "$BUILD_SCRIPT_PATH_CHECK_CONTEXTUAL" ]; then
             if [ -f "./common/build.config.gki.aarch64" ]; then
-               echo "SKIP_KMI_STRICT_MODE_CHECK=1" >> "./common/build.config.gki.aarch64"
+              echo "SKIP_KMI_STRICT_MODE_CHECK=1" >> "./common/build.config.gki.aarch64"
             elif [ -f "./common/build.config" ]; then
-                echo "SKIP_KMI_STRICT_MODE_CHECK=1" >> "./common/build.config"
+              echo "SKIP_KMI_STRICT_MODE_CHECK=1" >> "./common/build.config"
             fi
           fi
           cd "$GITHUB_WORKSPACE"
@@ -458,7 +458,7 @@ jobs:
           echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$GKI_DEFCONFIG_PATH"
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$GKI_DEFCONFIG_PATH" 
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$GKI_DEFCONFIG_PATH"
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$GKI_DEFCONFIG_PATH"
@@ -483,9 +483,9 @@ jobs:
               sed -i 's/-dirty//g' "$SETLOCALVERSION_SCRIPT"
             fi
           fi
-         
-          BUILD_SCRIPT_PATH_CHECK="./build/build.sh" 
-          if [ ! -f "$BUILD_SCRIPT_PATH_CHECK" ]; then 
+
+          BUILD_SCRIPT_PATH_CHECK="./build/build.sh"
+          if [ ! -f "$BUILD_SCRIPT_PATH_CHECK" ]; then
             COMMON_BAZEL_PATH_CHECK="./common/BUILD.bazel"
             KLEAF_STAMP_BZL_PATH_CHECK="./build/kernel/kleaf/impl/stamp.bzl"
             if [ -f "$COMMON_BAZEL_PATH_CHECK" ]; then
@@ -496,7 +496,7 @@ jobs:
               sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" "$KLEAF_STAMP_BZL_PATH_CHECK"
             fi
           fi
-       
+
       - name: 编译内核 (带重试)
         uses: nick-fields/retry@v3
         with:
@@ -504,14 +504,14 @@ jobs:
           max_attempts: 2
           retry_on: timeout
           command: |
-            set -e 
-            set -x 
+            set -e
+            set -x
             cd "${{ env.CONFIG }}"
             BUILD_SCRIPT_PATH="./build/build.sh"
-            if [ -f "$BUILD_SCRIPT_PATH" ]; then 
+            if [ -f "$BUILD_SCRIPT_PATH" ]; then
               LTO=thin SYSTEM_DLKM_RE_SIGN=0 BUILD_SYSTEM_DLKM=0 KMI_SYMBOL_LIST_STRICT_MODE=0 BUILD_CONFIG=common/build.config.gki.aarch64 "$BUILD_SCRIPT_PATH" CC="/usr/bin/ccache clang" || exit 1
-            else 
-              mkdir -p /home/runner/.cache/bazel_disk_cache 
+            else
+              mkdir -p /home/runner/.cache/bazel_disk_cache
               tools/bazel build --disk_cache=/home/runner/.cache/bazel_disk_cache --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
             fi
             ccache --show-stats
@@ -524,8 +524,8 @@ jobs:
             cd "$IMAGE_DIR_PATH"
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch_kpm
             chmod +x patch_kpm
-            ./patch_kpm 
-            if [ -f "oImage" ]; then 
+            ./patch_kpm
+            if [ -f "oImage" ]; then
               mv Image Image.orig_kpm
               mv oImage Image
             fi
@@ -533,7 +533,7 @@ jobs:
       - name: 修补内核映像 (KPM A14/A15)
         if: env.EFFECTIVE_USE_KPM == 'true' && (env.SELECTED_ANDROID_VERSION == 'android14' || env.SELECTED_ANDROID_VERSION == 'android15') && env.SELECTED_KERNEL_VERSION != '6.6'
         run: |
-          IMAGE_DIR_PATH="${{ env.CONFIG }}/bazel-bin/common/kernel_aarch64/" 
+          IMAGE_DIR_PATH="${{ env.CONFIG }}/bazel-bin/common/kernel_aarch64/"
           if [ -d "$IMAGE_DIR_PATH" ] && [ -f "$IMAGE_DIR_PATH/Image" ]; then
             cd "$IMAGE_DIR_PATH"
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch_kpm
@@ -573,41 +573,41 @@ jobs:
           path: ./AnyKernel3
           if-no-files-found: error
       - name: 准备 Release 输出信息
-      id: prepare_release_outputs
-      shell: bash
-      run: |
-        _suki_ver_num_for_name_prep="${{ env.SUKI_VERSION_NUM }}"
-        _kernel_ver="${{ env.SELECTED_KERNEL_VERSION }}"
-        _sub_level="${{ env.SELECTED_SUB_LEVEL }}"
-        _suffix_part="${{ env.ARTIFACT_NAME_SUFFIX_PART }}"
-        _artifact_name_for_upload_internal=""
-        if [[ "$_suki_ver_num_for_name_prep" != "NoVer" && "$_suki_ver_num_for_name_prep" =~ ^[0-9]+$ && "$_suki_ver_num_for_name_prep" != "00000" && "$_suki_ver_num_for_name_prep" != "10000" ]]; then
-          _artifact_name_for_upload_internal="AnyKernel3_SukiSUUltra_${_suki_ver_num_for_name_prep}_${_kernel_ver}-${_sub_level}_${_suffix_part}"
-        else
-          _artifact_name_for_upload_internal="AnyKernel3_SukiSU_NoVer_${_kernel_ver}-${_sub_level}_${_suffix_part}"
-        fi
-        _artifact_name_cleaned_for_output=$(echo "$_artifact_name_for_upload_internal" | sed 's/[^a-zA-Z0-9._-]/-/g')
-        echo "artifact_name_for_release=${_artifact_name_cleaned_for_output}" >> "$GITHUB_OUTPUT"
-        _new_release_base_name="sukisuultra"
-        _final_release_title=""
-        _final_release_tag=""
-        if [[ "$_suki_ver_num_for_name_prep" != "NoVer" && "$_suki_ver_num_for_name_prep" =~ ^[0-9]+$ && "$_suki_ver_num_for_name_prep" != "00000" && "$_suki_ver_num_for_name_prep" != "10000" ]]; then
-          _final_release_title="${_new_release_base_name}-${_suki_ver_num_for_name_prep}"
-          _final_release_tag="${_new_release_base_name}-${_suki_ver_num_for_name_prep}"
-        else
-          _actual_suffix_for_fallback="${_suffix_part}"
-          if [[ ! "$_actual_suffix_for_fallback" == -* && -n "$_actual_suffix_for_fallback" ]]; then
-            _actual_suffix_for_fallback="-${_actual_suffix_for_fallback}"
-          elif [[ -z "$_actual_suffix_for_fallback" ]]; then
-            _actual_suffix_for_fallback="-$(date +%Y%m%d)"
+        id: prepare_release_outputs
+        shell: bash
+        run: |
+          _suki_ver_num_for_name_prep="${{ env.SUKI_VERSION_NUM }}"
+          _kernel_ver="${{ env.SELECTED_KERNEL_VERSION }}"
+          _sub_level="${{ env.SELECTED_SUB_LEVEL }}"
+          _suffix_part="${{ env.ARTIFACT_NAME_SUFFIX_PART }}"
+          _artifact_name_for_upload_internal=""
+          if [[ "$_suki_ver_num_for_name_prep" != "NoVer" && "$_suki_ver_num_for_name_prep" =~ ^[0-9]+$ && "$_suki_ver_num_for_name_prep" != "00000" && "$_suki_ver_num_for_name_prep" != "10000" ]]; then
+            _artifact_name_for_upload_internal="AnyKernel3_SukiSUUltra_${_suki_ver_num_for_name_prep}_${_kernel_ver}-${_sub_level}_${_suffix_part}"
+          else
+            _artifact_name_for_upload_internal="AnyKernel3_SukiSU_NoVer_${_kernel_ver}-${_sub_level}_${_suffix_part}"
           fi
-          _final_release_title="${_new_release_base_name}-NoVer${_actual_suffix_for_fallback}"
-          _final_release_tag="${_new_release_base_name}-NoVer${_actual_suffix_for_fallback}"
-        fi
-        _final_release_tag_cleaned=$(echo "$_final_release_tag" | sed 's/[^a-zA-Z0-9._-]/-/g')
-        _final_release_title_cleaned="${_final_release_title}"
-        echo "release_tag_name=${_final_release_tag_cleaned}" >> "$GITHUB_OUTPUT"
-        echo "release_title_name=${_final_release_title_cleaned}" >> "$GITHUB_OUTPUT"
+          _artifact_name_cleaned_for_output=$(echo "$_artifact_name_for_upload_internal" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          echo "artifact_name_for_release=${_artifact_name_cleaned_for_output}" >> "$GITHUB_OUTPUT"
+          _new_release_base_name="sukisuultra"
+          _final_release_title=""
+          _final_release_tag=""
+          if [[ "$_suki_ver_num_for_name_prep" != "NoVer" && "$_suki_ver_num_for_name_prep" =~ ^[0-9]+$ && "$_suki_ver_num_for_name_prep" != "00000" && "$_suki_ver_num_for_name_prep" != "10000" ]]; then
+            _final_release_title="${_new_release_base_name}-${_suki_ver_num_for_name_prep}"
+            _final_release_tag="${_new_release_base_name}-${_suki_ver_num_for_name_prep}"
+          else
+            _actual_suffix_for_fallback="${_suffix_part}"
+            if [[ ! "$_actual_suffix_for_fallback" == -* && -n "$_actual_suffix_for_fallback" ]]; then
+              _actual_suffix_for_fallback="-${_actual_suffix_for_fallback}"
+            elif [[ -z "$_actual_suffix_for_fallback" ]]; then
+              _actual_suffix_for_fallback="-$(date +%Y%m%d)"
+            fi
+            _final_release_title="${_new_release_base_name}-NoVer${_actual_suffix_for_fallback}"
+            _final_release_tag="${_new_release_base_name}-NoVer${_actual_suffix_for_fallback}"
+          fi
+          _final_release_tag_cleaned=$(echo "$_final_release_tag" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          _final_release_title_cleaned="${_final_release_title}"
+          echo "release_tag_name=${_final_release_tag_cleaned}" >> "$GITHUB_OUTPUT"
+          echo "release_title_name=${_final_release_title_cleaned}" >> "$GITHUB_OUTPUT"
 
   create_release:
     name: 创建 GitHub Release
@@ -619,11 +619,11 @@ jobs:
     steps:
       - name: 安装 zip 工具
         run: sudo apt-get update && sudo apt-get install -y zip
-      
+
       - name: 下载内核刷机包
         uses: actions/download-artifact@v4
         with:
-          name: ${{ needs.build_kernel.outputs.artifact_name }} 
+          name: ${{ needs.build_kernel.outputs.artifact_name }}
           path: downloaded_artifact
 
       - name: 准备刷机包并设置路径
@@ -660,7 +660,7 @@ jobs:
             **构建选项:**
             - 使用ZRAM: `${{ github.event.inputs.use_zram }}`
             - 使用KPM: `${{ github.event.inputs.use_kpm }}`
-            
+
             ---
           token: ${{ secrets.GITHUB_TOKEN }}
           allowUpdates: true
