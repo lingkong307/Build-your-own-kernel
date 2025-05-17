@@ -576,38 +576,48 @@ jobs:
         id: prepare_release_outputs
         shell: bash
         run: |
-          _suki_ver_num_for_name_prep="${{ env.SUKI_VERSION_NUM }}" 
-          _kernel_ver="${{ env.SELECTED_KERNEL_VERSION }}"
-          _sub_level="${{ env.SELECTED_SUB_LEVEL }}"
-          _suffix_part="${{ env.ARTIFACT_NAME_SUFFIX_PART }}"
+          _suki_ver_num_for_name_prep="${{ env.SUKI_VERSION_NUM }}"
+_kernel_ver="${{ env.SELECTED_KERNEL_VERSION }}"
+_sub_level="${{ env.SELECTED_SUB_LEVEL }}"
+_suffix_part="${{ env.ARTIFACT_NAME_SUFFIX_PART }}"
 
-          _artifact_name_for_release=""
-          if [[ "$_suki_ver_num_for_name_prep" != "NoVer" && "$_suki_ver_num_for_name_prep" != "" && "$_suki_ver_num_for_name_prep" != "00000" && "$_suki_ver_num_for_name_prep" != "10000" ]]; then
-            _artifact_name_for_release="AnyKernel3_SukiSUUltra_${_suki_ver_num_for_name_prep}_${_kernel_ver}-${_sub_level}_${_suffix_part}"
-          else
-            _artifact_name_for_release="AnyKernel3_SukiSU_NoVer_${_kernel_ver}-${_sub_level}_${_suffix_part}"
-          fi
-         
-          _artifact_name_cleaned=$(echo "$_artifact_name_for_release" | sed 's/[^a-zA-Z0-9._-]/-/g')
+# --- Start: Keep original artifact name logic for file naming and artifact download ---
+_artifact_name_for_upload_internal=""
+if [[ "$_suki_ver_num_for_name_prep" != "NoVer" && "$_suki_ver_num_for_name_prep" =~ ^[0-9]+$ && "$_suki_ver_num_for_name_prep" != "00000" && "$_suki_ver_num_for_name_prep" != "10000" ]]; then
+  _artifact_name_for_upload_internal="AnyKernel3_SukiSUUltra_${_suki_ver_num_for_name_prep}_${_kernel_ver}-${_sub_level}_${_suffix_part}"
+else
+  _artifact_name_for_upload_internal="AnyKernel3_SukiSU_NoVer_${_kernel_ver}-${_sub_level}_${_suffix_part}"
+fi
+_artifact_name_cleaned_for_output=$(echo "$_artifact_name_for_upload_internal" | sed 's/[^a-zA-Z0-9._-]/-/g')
+echo "artifact_name_for_release=${_artifact_name_cleaned_for_output}" >> "$GITHUB_OUTPUT"
+# --- End: Keep original artifact name logic ---
 
-          _base_for_title_and_tag=""
-          _tag_suffix_part=""
-          if [[ "$_suki_ver_num_for_name_prep" != "NoVer" && "$_suki_ver_num_for_name_prep" != "" && "$_suki_ver_num_for_name_prep" != "00000" && "$_suki_ver_num_for_name_prep" != "10000" ]]; then
-              _base_for_title_and_tag="SukiSUUltra_${_suki_ver_num_for_name_prep}_${_kernel_ver}-${_sub_level}"
-              _tag_suffix_part="${_suffix_part}" 
-          else
-              _base_for_title_and_tag="SukiSU_NoVer_${_kernel_ver}-${_sub_level}"
-              _tag_suffix_part="${_suffix_part}" 
-          fi
-         
-          _release_tag_name_combined="${_base_for_title_and_tag}${_tag_suffix_part}"
-          _release_tag_cleaned=$(echo "$_release_tag_name_combined" | tr '.' '_' | sed 's/[^a-zA-Z0-9._-]/-/g')
-         
-          _release_title_cleaned="${_base_for_title_and_tag}"
+# --- Start: New Release Title and Tag logic ---
+_new_release_base_name="sukisuultra"
+_final_release_title=""
+_final_release_tag=""
 
-          echo "artifact_name_for_release=${_artifact_name_cleaned}" >> "$GITHUB_OUTPUT"
-          echo "release_tag_name=${_release_tag_cleaned}" >> "$GITHUB_OUTPUT"
-          echo "release_title_name=${_release_title_cleaned}" >> "$GITHUB_OUTPUT"
+if [[ "$_suki_ver_num_for_name_prep" != "NoVer" && "$_suki_ver_num_for_name_prep" =~ ^[0-9]+$ && "$_suki_ver_num_for_name_prep" != "00000" && "$_suki_ver_num_for_name_prep" != "10000" ]]; then
+  _final_release_title="${_new_release_base_name}-${_suki_ver_num_for_name_prep}"
+  _final_release_tag="${_new_release_base_name}-${_suki_ver_num_for_name_prep}"
+else
+  _actual_suffix_for_fallback="${_suffix_part}"
+  if [[ ! "$_actual_suffix_for_fallback" == -* && -n "$_actual_suffix_for_fallback" ]]; then
+    _actual_suffix_for_fallback="-${_actual_suffix_for_fallback}"
+  elif [[ -z "$_actual_suffix_for_fallback" ]]; then # Should not happen given ARTIFACT_NAME_SUFFIX_PART logic in generate_suffixes
+    _actual_suffix_for_fallback="-$(date +%Y%m%d)" # Robust fallback if suffix_part was unexpectedly empty
+  fi
+  _final_release_title="${_new_release_base_name}-NoVer${_actual_suffix_for_fallback}"
+  _final_release_tag="${_new_release_base_name}-NoVer${_actual_suffix_for_fallback}"
+fi
+
+_final_release_tag_cleaned=$(echo "$_final_release_tag" | sed 's/[^a-zA-Z0-9._-]/-/g')
+# 对于 Release Title，通常不需要像 Tag 那样严格清洗，但为保持一致性或避免潜在问题，可以进行类似处理或按需调整
+_final_release_title_cleaned="${_final_release_title}" 
+
+echo "release_tag_name=${_final_release_tag_cleaned}" >> "$GITHUB_OUTPUT"
+echo "release_title_name=${_final_release_title_cleaned}" >> "$GITHUB_OUTPUT"
+# --- End: New Release Title and Tag logic ---
 
   create_release:
     name: 创建 GitHub Release
