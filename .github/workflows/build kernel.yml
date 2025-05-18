@@ -700,15 +700,20 @@ jobs:
               /usr/bin/time -v ./build/build.sh || exit 1
             else
               echo "Using Bazel build system..."
-              BAZEL_CMD="tools/bazel build \
-                --disk_cache=${BAZEL_DISK_CACHE_PATH} \
+              # Construct the command string for bash -c
+              # Ensure variables like BAZEL_DISK_CACHE_PATH are properly quoted within the string
+              # BAZEL_OPTIMIZATION_FLAGS from the environment will be substituted,
+              # and the new bash shell started by bash -c will evaluate $(nproc) within it.
+              CMD_TO_EXEC="tools/bazel build \
+                --disk_cache=\"${BAZEL_DISK_CACHE_PATH}\" \
                 --config=fast \
                 --lto=thin \
-                --profile=${BAZEL_PROFILE_PATH_IN_WORKSPACE} \
+                --profile=\"${BAZEL_PROFILE_PATH_IN_WORKSPACE}\" \
                 ${BAZEL_OPTIMIZATION_FLAGS} \
                 //common:kernel_aarch64_dist"
-              echo "Executing Bazel command: $BAZEL_CMD"
-              /usr/bin/time -v $BAZEL_CMD || exit 1
+
+              echo "Executing Bazel command via bash -c: ${CMD_TO_EXEC}"
+              /usr/bin/time -v bash -c "${CMD_TO_EXEC}" || exit 1
             fi
             echo "Ccache statistics after build:"
             ccache --show-stats
