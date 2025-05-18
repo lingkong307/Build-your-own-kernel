@@ -1,4 +1,4 @@
-name: A内核编译
+name: 内核编译
 permissions:
   contents: write
   actions: write
@@ -344,9 +344,9 @@ jobs:
           if [[ -n "${{ env.SELECTED_OS_PATCH_LEVEL }}" && "${{ env.SELECTED_OS_PATCH_LEVEL }}" != "X" ]]; then
             _MANIFEST_BRANCH="${_MANIFEST_BRANCH_BASE}-${{ env.SELECTED_OS_PATCH_LEVEL }}"
           elif [[ "${{ github.event.inputs.kernel_to_build }}" == *"_X_lts_"* || "${{ github.event.inputs.kernel_to_build }}" == *"_lts_"* ]]; then
-             _MANIFEST_BRANCH="${_MANIFEST_BRANCH_BASE}-lts"
+              _MANIFEST_BRANCH="${_MANIFEST_BRANCH_BASE}-lts"
           else
-             _MANIFEST_BRANCH="${_MANIFEST_BRANCH_BASE}"
+              _MANIFEST_BRANCH="${_MANIFEST_BRANCH_BASE}"
           fi
           echo "Using manifest branch: $_MANIFEST_BRANCH for repo init"
           $REPO init --depth=1 -u https://android.googlesource.com/kernel/manifest -b $_MANIFEST_BRANCH --repo-rev=v2.16
@@ -360,10 +360,10 @@ jobs:
           fi
           REMOTE_COMMON_BRANCH_STATUS=$(git ls-remote https://android.googlesource.com/kernel/common $COMMON_PROJECT_REVISION_IN_MANIFEST)
           if echo "$REMOTE_COMMON_BRANCH_STATUS" | grep -q "deprecated/$COMMON_PROJECT_REVISION_IN_MANIFEST"; then
-             echo "Common kernel branch '$COMMON_PROJECT_REVISION_IN_MANIFEST' is deprecated. Adjusting manifest for 'deprecated/' prefix."
-             sed -i "/project path=\"common\"/s|revision=\"$COMMON_PROJECT_REVISION_IN_MANIFEST\"|revision=\"deprecated/$COMMON_PROJECT_REVISION_IN_MANIFEST\"|" $DEFAULT_MANIFEST_PATH || \
-             sed -i "/project path=\"kernel\/common\"/s|revision=\"$COMMON_PROJECT_REVISION_IN_MANIFEST\"|revision=\"deprecated/$COMMON_PROJECT_REVISION_IN_MANIFEST\"|" $DEFAULT_MANIFEST_PATH
-             echo "Manifest potentially updated to use deprecated/ branch for common project."
+              echo "Common kernel branch '$COMMON_PROJECT_REVISION_IN_MANIFEST' is deprecated. Adjusting manifest for 'deprecated/' prefix."
+              sed -i "/project path=\"common\"/s|revision=\"$COMMON_PROJECT_REVISION_IN_MANIFEST\"|revision=\"deprecated/$COMMON_PROJECT_REVISION_IN_MANIFEST\"|" $DEFAULT_MANIFEST_PATH || \
+              sed -i "/project path=\"kernel\/common\"/s|revision=\"$COMMON_PROJECT_REVISION_IN_MANIFEST\"|revision=\"deprecated/$COMMON_PROJECT_REVISION_IN_MANIFEST\"|" $DEFAULT_MANIFEST_PATH
+              echo "Manifest potentially updated to use deprecated/ branch for common project."
           fi
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast --current-branch
 
@@ -379,10 +379,10 @@ jobs:
           fi
           echo "KSU_BRANCH_ARG=${KSU_SETUP_BRANCH_ARG}" >> $GITHUB_ENV
 
-      - name: 集成SukiSU
+      - name: 集成SukiSU (旧版参数传递)
         run: |
           cd "${{ env.CONFIG }}"
-          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s -- ${{ env.KSU_BRANCH_ARG }}
+          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash ${{ env.KSU_BRANCH_ARG }}
 
       - name: 设置SukiSU版本号
         shell: bash
@@ -394,44 +394,78 @@ jobs:
             echo "SUKI_VERSION_NUM=NoVer" >> $GITHUB_ENV
           fi
 
-      - name: 并行应用内核补丁
+      - name: 应用SUSFS补丁 (旧版逻辑)
+        working-directory: ./${{ env.CONFIG }}
         shell: bash
         run: |
-          echo "Starting parallel patch application..."
+          echo "Applying SUSFS patches using old workflow logic..."
+          mkdir -p ./common/fs # Ensure target directories exist
+          mkdir -p ./common/include/linux
+
+          # Copy patch file from ../susfs4ksu to ./common/
+          # Note: ../susfs4ksu is relative to ./${{ env.CONFIG }} which is ${GITHUB_WORKSPACE}/${{ env.CONFIG }}
+          # So ../susfs4ksu refers to ${GITHUB_WORKSPACE}/susfs4ksu
+          SUSFS_PATCH_SRC_FILE_PATH="${GITHUB_WORKSPACE}/susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch"
+          SUSFS_PATCH_DEST_DIR_PATH="./common/" # Relative to working-directory
+          if [ -f "$SUSFS_PATCH_SRC_FILE_PATH" ]; then
+            cp "$SUSFS_PATCH_SRC_FILE_PATH" "$SUSFS_PATCH_DEST_DIR_PATH" || echo "SUSFS common patch copy failed (old logic)"
+          else
+            echo "SUSFS source patch file not found at $SUSFS_PATCH_SRC_FILE_PATH (old logic)"
+          fi
+          
+          SUSFS_FS_SRC_PATH="${GITHUB_WORKSPACE}/susfs4ksu/kernel_patches/fs"
+          SUSFS_FS_DEST_PATH="./common/fs/"
+          if [ -d "$SUSFS_FS_SRC_PATH" ]; then
+            # Copy contents of fs directory. Using /* ensures it copies contents.
+            # Add check if source actually has files to avoid cp error on empty glob
+            if [ -n "$(ls -A $SUSFS_FS_SRC_PATH)" ]; then
+                cp -r ${SUSFS_FS_SRC_PATH}/* "$SUSFS_FS_DEST_PATH" || echo "SUSFS fs dir copy failed (old logic)"
+            else
+                echo "SUSFS source fs directory is empty: $SUSFS_FS_SRC_PATH"
+            fi
+          else
+            echo "SUSFS source fs directory not found: $SUSFS_FS_SRC_PATH (old logic)"
+          fi
+
+          SUSFS_INCLUDE_SRC_PATH="${GITHUB_WORKSPACE}/susfs4ksu/kernel_patches/include/linux"
+          SUSFS_INCLUDE_DEST_PATH="./common/include/linux/"
+          if [ -d "$SUSFS_INCLUDE_SRC_PATH" ]; then
+            if [ -n "$(ls -A $SUSFS_INCLUDE_SRC_PATH)" ]; then
+                cp -r ${SUSFS_INCLUDE_SRC_PATH}/* "$SUSFS_INCLUDE_DEST_PATH" || echo "SUSFS include dir copy failed (old logic)"
+            else
+                echo "SUSFS source include/linux directory is empty: $SUSFS_INCLUDE_SRC_PATH"
+            fi
+          else
+            echo "SUSFS source include/linux directory not found: $SUSFS_INCLUDE_SRC_PATH (old logic)"
+          fi
+          
+          cd ./common # Change directory to ./common for patch application
+
+          SUSFS_PATCH_FILENAME_IN_COMMON="50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch"
+          if [ -f "./${SUSFS_PATCH_FILENAME_IN_COMMON}" ]; then
+            echo "Attempting to apply patch: ./${SUSFS_PATCH_FILENAME_IN_COMMON}"
+            patch -p1 --fuzz=3 < "./${SUSFS_PATCH_FILENAME_IN_COMMON}" || true # Key: using || true from old workflow
+            echo "SUSFS patch application attempted (old logic)."
+          else
+            echo "SUSFS patch file ./${SUSFS_PATCH_FILENAME_IN_COMMON} not found in ./common/ for application (old logic)."
+          fi
+          
+          # Apply fix for specific 6.6 kernel if needed
+          FORMATTED_BRANCH_FOR_FIX_COMPARE="${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}-${{ env.SELECTED_OS_PATCH_LEVEL }}"
+          if [[ "$FORMATTED_BRANCH_FOR_FIX_COMPARE" == "android15-6.6-2024-08" || "$FORMATTED_BRANCH_FOR_FIX_COMPARE" == "android15-6.6-2024-09" ]]; then
+            echo "Applying fix for 6.6 kernel (android15-6.6-2024-08/09) using old logic..."
+            curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/fix/fix6.6.patch -o fix6.6.patch
+            patch -p1 < fix6.6.patch || true # Key: using || true
+            echo "Fix patch for 6.6 attempted (old logic)."
+          fi
+          echo "SUSFS patching (old logic) finished."
+
+      - name: 并行应用内核补丁 (不含SUSFS)
+        shell: bash
+        run: |
+          echo "Starting parallel patch application (SUSFS handled separately)..."
           COMMON_DIR_PATH="${GITHUB_WORKSPACE}/${{ env.CONFIG }}/common"
-          apply_susfs_patch() {
-            echo "Applying SUSFS patches..."
-            cd "$COMMON_DIR_PATH"
-            SUSFS_PATCH_FILE_NAME="50_add_susfs_in_gki-${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}.patch"
-            if [ -f "${GITHUB_WORKSPACE}/susfs4ksu/kernel_patches/${SUSFS_PATCH_FILE_NAME}" ]; then
-                cp "${GITHUB_WORKSPACE}/susfs4ksu/kernel_patches/${SUSFS_PATCH_FILE_NAME}" ./ || echo "SUSFS common patch copy failed"
-            else
-                echo "SUSFS common patch file not found: ${GITHUB_WORKSPACE}/susfs4ksu/kernel_patches/${SUSFS_PATCH_FILE_NAME}"
-            fi
-            if [ -d "${GITHUB_WORKSPACE}/susfs4ksu/kernel_patches/fs" ]; then
-                cp -r "${GITHUB_WORKSPACE}/susfs4ksu/kernel_patches/fs/." ./fs/ || echo "SUSFS fs dir copy failed"
-            else
-                echo "SUSFS fs dir not found: ${GITHUB_WORKSPACE}/susfs4ksu/kernel_patches/fs"
-            fi
-            if [ -d "${GITHUB_WORKSPACE}/susfs4ksu/kernel_patches/include/linux" ]; then
-                mkdir -p ./include/linux
-                cp -r "${GITHUB_WORKSPACE}/susfs4ksu/kernel_patches/include/linux/." ./include/linux/ || echo "SUSFS include dir copy failed"
-            else
-                echo "SUSFS include/linux dir not found: ${GITHUB_WORKSPACE}/susfs4ksu/kernel_patches/include/linux"
-            fi
-            if [ -f "./${SUSFS_PATCH_FILE_NAME}" ]; then
-              patch -p1 --fuzz=3 < "./${SUSFS_PATCH_FILE_NAME}" || echo "SUSFS patch application failed for $SUSFS_PATCH_FILE_NAME"
-            else
-              echo "SUSFS patch file not found for application: ./${SUSFS_PATCH_FILE_NAME}"
-            fi
-            FORMATTED_BRANCH_FOR_FIX_COMPARE="${{ env.SELECTED_ANDROID_VERSION }}-${{ env.SELECTED_KERNEL_VERSION }}-${{ env.SELECTED_OS_PATCH_LEVEL }}"
-            if [[ "$FORMATTED_BRANCH_FOR_FIX_COMPARE" == "android15-6.6-2024-08" || "$FORMATTED_BRANCH_FOR_FIX_COMPARE" == "android15-6.6-2024-09" ]]; then
-              echo "Applying fix for 6.6 kernel (android15-6.6-2024-08/09)..."
-              curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/fix/fix6.6.patch -o fix6.6.patch
-              patch -p1 < fix6.6.patch || echo "Fix patch for 6.6 failed"
-            fi
-            echo "SUSFS patches finished."
-          }
+          
           apply_hooks_patch() {
             echo "Applying SukiSU hooks patch..."
             cd "$COMMON_DIR_PATH"
@@ -493,24 +527,24 @@ jobs:
             fi
             echo "Hide stuff patch finished."
           }
-          apply_susfs_patch &
-          PID_SUSFS=$!
+
           apply_hooks_patch &
           PID_HOOKS=$!
           apply_zram_compression_patches &
           PID_ZRAM=$!
           apply_hide_stuff_patch &
           PID_HIDE=$!
-          echo "Waiting for patch processes to complete..."
+
+          echo "Waiting for non-SUSFS patch processes to complete..."
           FAIL=0
-          wait $PID_SUSFS || { echo "SUSFS patching failed in background."; FAIL=1; }
           wait $PID_HOOKS || { echo "Hooks patching failed in background."; FAIL=1; }
           wait $PID_ZRAM || { echo "ZRAM patching failed in background."; FAIL=1; }
           wait $PID_HIDE || { echo "Hide stuff patching failed in background."; FAIL=1; }
+          
           if [ "$FAIL" -eq 1 ]; then
-            echo "One or more patch processes failed. Check logs."
+            echo "One or more non-SUSFS patch processes failed. Check logs."
           else
-            echo "All patch processes completed."
+            echo "All non-SUSFS patch processes completed."
           fi
 
       - name: 配置ZRAM算法
@@ -667,6 +701,11 @@ jobs:
               echo "CONFIG_ZRAM=y validated (as use_zram is true)."
             fi
           fi
+          if ! grep -q "^CONFIG_KSU_SUSFS=y$" "$GKI_DEFCONFIG_TO_CHECK"; then
+             echo "::warning::CONFIG_KSU_SUSFS is not enabled in $GKI_DEFCONFIG_TO_CHECK! This might be intended if SUSFS is not used, or an error if it is."
+          else
+             echo "CONFIG_KSU_SUSFS=y validated."
+          fi
           if [ "$MISSING_CONFIGS" -ne 0 ]; then
             echo "::error::One or more critical kernel configurations are missing or incorrect. Please check the defconfig and earlier configuration steps."
             exit 1
@@ -700,10 +739,6 @@ jobs:
               /usr/bin/time -v ./build/build.sh || exit 1
             else
               echo "Using Bazel build system..."
-              # Construct the command string for bash -c
-              # Ensure variables like BAZEL_DISK_CACHE_PATH are properly quoted within the string
-              # BAZEL_OPTIMIZATION_FLAGS from the environment will be substituted,
-              # and the new bash shell started by bash -c will evaluate $(nproc) within it.
               CMD_TO_EXEC="tools/bazel build \
                 --disk_cache=\"${BAZEL_DISK_CACHE_PATH}\" \
                 --config=fast \
@@ -821,7 +856,7 @@ jobs:
           else
             _actual_suffix_for_fallback="${_suffix_part}"
             if [[ -z "$_actual_suffix_for_fallback" && "${{ github.event.inputs.custom_version_suffix }}" == "" ]]; then
-               _actual_suffix_for_fallback="-$(date +%Y%m%d)"
+                _actual_suffix_for_fallback="-$(date +%Y%m%d)"
             fi
             _artifact_name_for_upload_internal="AnyKernel3_${_new_release_base_name}_NoVer_${_kernel_ver}-${_sub_level}${_actual_suffix_for_fallback}"
             _final_release_title="${_new_release_base_name}-NoVer${_actual_suffix_for_fallback}"
