@@ -852,7 +852,7 @@ jobs:
             - 构建日期: `${{ needs.build_kernel.outputs.current_build_date_formatted_output }}`
             **构建选项:**
             - 使用ZRAM: `${{ github.event.inputs.use_zram }}`
-            - 使用KPM: `${{ needs.build_kernel.outputs.effective_kpm_setting }}` (实际生效的KPM设置)
+            - 使用KPM: `${{ needs.build_kernel.outputs.effective_kpm_setting }}`
             ---
             *SHA: `${{ github.sha }}`*
             *构建ID: `${{ github.run_id }}`*
