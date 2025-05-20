@@ -845,7 +845,7 @@ jobs:
             一枚新鲜自动构建的内核已送达！ 🚀
 
             --------------------------------------------------
-            **🔥 主要亮点 🔥**
+            **🔥 主要信息 🔥**
             * **SukiSU 版本:** `${{ needs.build_kernel.outputs.sukisu_version_from_build_job }}`
             * **基于内核:** `${{ github.event.inputs.kernel_to_build }}`
             * **功能分支:** `${{ github.event.inputs.kernelsu_branch }}`
