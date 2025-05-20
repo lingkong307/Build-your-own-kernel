@@ -836,35 +836,35 @@ jobs:
           if [ ! -f "${final_zip}" ]; then echo "::error::Failed to create zip package."; exit 1; fi
           echo "packaged_zip=${final_zip}" >> $GITHUB_OUTPUT
       - name: 创建 Release 并上传刷机包
-  uses: ncipollo/release-action@v1
-  with:
-    artifacts: ${{ steps.package_kernel.outputs.packaged_zip }}
-    tag: ${{ needs.build_kernel.outputs.release_tag }}
-    name: ${{ needs.build_kernel.outputs.release_title }} # 这将作为 "新版本出炉！SukiSUUltra-XXXXX" 的标题部分
-    body: |
-      一枚新鲜自动构建的内核已送达！ 🚀
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: ${{ steps.package_kernel.outputs.packaged_zip }}
+          tag: ${{ needs.build_kernel.outputs.release_tag }}
+          name: ${{ needs.build_kernel.outputs.release_title }}
+          body: |
+            一枚新鲜自动构建的内核已送达！ 🚀
 
-      --------------------------------------------------
-      **🔥 主要亮点 🔥**
-      * **SukiSU 版本:** `${{ needs.build_kernel.outputs.sukisu_version_from_build_job }}`
-      * **基于内核:** `${{ github.event.inputs.kernel_to_build }}`
-      * **功能分支:** `${{ github.event.inputs.kernelsu_branch }}`
-      --------------------------------------------------
+            --------------------------------------------------
+            **🔥 主要亮点 🔥**
+            * **SukiSU 版本:** `${{ needs.build_kernel.outputs.sukisu_version_from_build_job }}`
+            * **基于内核:** `${{ github.event.inputs.kernel_to_build }}`
+            * **功能分支:** `${{ github.event.inputs.kernelsu_branch }}`
+            --------------------------------------------------
 
-      **⚙️ 详细参数 ⚙️**
-      * **内核全称:**
-          `${{ needs.build_kernel.outputs.parsed_kernel_version_output }}.${{ needs.build_kernel.outputs.parsed_sub_level_output }}${{ needs.build_kernel.outputs.final_kernel_local_version_output }}`
-      * **构建日期:**
-          `${{ needs.build_kernel.outputs.current_build_date_formatted_output }}`
-      * **自定义后缀:**
-          `${{ github.event.inputs.custom_version_suffix == '' && '仿官方随机生成' || format('自定义: {0}', github.event.inputs.custom_version_suffix) }}`
+            **⚙️ 详细参数 ⚙️**
+            * **内核全称:**
+                `${{ needs.build_kernel.outputs.parsed_kernel_version_output }}.${{ needs.build_kernel.outputs.parsed_sub_level_output }}${{ needs.build_kernel.outputs.final_kernel_local_version_output }}`
+            * **构建日期:**
+                `${{ needs.build_kernel.outputs.current_build_date_formatted_output }}`
+            * **自定义后缀:**
+                `${{ github.event.inputs.custom_version_suffix == '' && '仿官方随机生成' || format('自定义: {0}', github.event.inputs.custom_version_suffix) }}`
 
-      **🛠️ 编译特性 🛠️**
-      * ✅ **ZRAM:** `${{ github.event.inputs.use_zram }}`
-      * ✅ **KPM:** `${{ needs.build_kernel.outputs.effective_kpm_setting }}` (实际生效)
+            **🛠️ 编译特性 🛠️**
+            * ✅ **ZRAM:** `${{ github.event.inputs.use_zram }}`
+            * ✅ **KPM:** `${{ needs.build_kernel.outputs.effective_kpm_setting }}` (实际生效)
 
-      **🔗 追踪信息 🔗**
-      * **SHA:** `${{ github.sha }}`
-      * **构建 ID:** `${{ github.run_id }}`
-    token: ${{ secrets.GITHUB_TOKEN }}
-    allowUpdates: true
+            **🔗 追踪信息 🔗**
+            * **SHA:** `${{ github.sha }}`
+            * **构建 ID:** `${{ github.run_id }}`
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
