@@ -79,7 +79,7 @@ on:
         description: '启用KPM功能'
         required: true
         type: boolean
-        default: true
+        default: false
       upload_to_release:
         description: '是否上传到 GitHub Release'
         required: true
