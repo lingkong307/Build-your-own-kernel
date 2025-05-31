@@ -322,14 +322,6 @@ jobs:
           curl -sS https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
           chmod a+rx ./git-repo/repo
           echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
-      #- name: 依赖项安全检查
-      #  uses: actions/dependency-review-action@v4
-      #  with:
-      #    base-ref: ${{ github.sha }}~1
-      #    head-ref: ${{ github.sha }}
-      #    fail-on-severity: high
-      #    allow-licenses: MIT, Apache-2.0, GPL-2.0, BSD-3-Clause
-      #    warn-only: true
       - name: 克隆依赖仓库
         run: |
           set -euo pipefail
