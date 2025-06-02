@@ -850,7 +850,7 @@ jobs:
 
             **🛠️ 编译特性 🛠️**
             * ✅ **ZRAM:** `${{ github.event.inputs.use_zram }}`
-            * ✅ **KPM:** `${{ needs.build_kernel.outputs.effective_kpm_setting }}` (实际生效)
+            * ✅ **KPM:** `${{ needs.build_kernel.outputs.effective_kpm_setting }}`
 
             **🔗 追踪信息 🔗**
             * **SHA:** `${{ github.sha }}`
