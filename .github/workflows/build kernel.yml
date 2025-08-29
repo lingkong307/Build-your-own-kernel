@@ -149,15 +149,10 @@ jobs:
       - name: 调整KPM设置
         id: kpm_settings
         run: |
-          set -euo pipefail
-          EFFECTIVE_KPM_VALUE=""
-          if [[ "${{ env.SELECTED_ANDROID_VERSION }}" == "android15" && "${{ env.SELECTED_KERNEL_VERSION }}" == "6.6" ]]; then
-            EFFECTIVE_KPM_VALUE="false"
-          else
-            EFFECTIVE_KPM_VALUE="${{ github.event.inputs.use_kpm }}"
-          fi
-          echo "EFFECTIVE_USE_KPM=${EFFECTIVE_KPM_VALUE}" >> $GITHUB_ENV
-          echo "effective_kpm_value=${EFFECTIVE_KPM_VALUE}" >> $GITHUB_OUTPUT
+         set -euo pipefail
+         EFFECTIVE_KPM_VALUE="true"
+         echo "EFFECTIVE_USE_KPM=${EFFECTIVE_KPM_VALUE}" >> $GITHUB_ENV
+         echo "effective_kpm_value=${EFFECTIVE_KPM_VALUE}" >> $GITHUB_OUTPUT
       - name: 优化构建空间
         uses: easimon/maximize-build-space@master
         with:
